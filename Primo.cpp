@@ -162,9 +162,10 @@ int main( int argc, char** argv )
 {
 	/*-------------------------------------------------------------------------------------*/
 	VideoCapture cap; // open the video camera for reading (use a string for a file)
-	Mat frame[15], gray_frame[15];
+	Mat frame, gray_frame;
 	Mat I[15],SM;
 	namedWindow("Coherency Based Spatio-Temporal SM (Up to 15 frames)", CV_WINDOW_AUTOSIZE);
+	namedWindow("Optical Flow",1);
 	vector<float> descriptorsValues;
 	vector<Point> locations;
 	vector<Point2f> points[2];
@@ -226,13 +227,36 @@ int main( int argc, char** argv )
     {
 		for(N=0;N<15;N++)
 		{
-			cap >> frame[N]; // read a new frame from video
+			cap >> frame; // read a new frame from video
 			
-			cvtColor(frame[N], gray_frame[N], CV_RGB2GRAY);
+			cvtColor(frame, gray_frame, CV_RGB2GRAY);
 		
-			gray_frame[N].convertTo(I[N], -1, 1.2, 0);
+			gray_frame.convertTo(I[N], -1, 1.2, 0);
 			
-			if(N==14)
+			if(N == 0)
+			{
+				goodFeaturesToTrack(I[N], points[1], 500, 0.01, 10, Mat(), 3, 0, 0.04);
+				cornerSubPix(I[N], points[1], Size(16,16), Size(-1,-1), criteria);
+			}
+			
+			if(N > 0)
+			{
+				calcOpticalFlowPyrLK(I[N-1], I[N], points[0], points[1],status, err, Size(16,16), maxLevel , criteria, flags, minEigThreshold);
+				for( i = k = 0; i < points[1].size(); i++ )
+				{
+					if( !status[i] )
+						continue;
+
+						points[1][k++] = points[1][i];
+						circle( frame, points[1][i], 3, Scalar(0,255,0), -1, 8);
+				}	
+				points[1].resize(k);
+			}
+
+			imshow("Optical Flow",frame);
+			swap(points[1], points[0]);
+
+			if(N == 14)
 			{
 				d.compute(I[N], descriptorsValues, Size(0,0), Size(0,0), locations);
 		
@@ -252,28 +276,15 @@ int main( int argc, char** argv )
 					}
 				}
 			}
-			
-			if(N>0)
-			{
-				calcOpticalFlowPyrLK(I[N-1], I[N], points[0], points[1],status, err, Size(16,16), maxLevel , criteria, flags, minEigThreshold);
-				for( i = k = 0; i < points[1].size(); i++ )
-				{
-	                if( !status[i] )
-	                    continue;
-	
-	                points[1][k++] = points[1][i];
-					circle( SM, points[1][i], 3, Scalar(0,255,0), -1, 8);
-	            }
-			}
 		}
-		
-		//SM = formula della mappa SM;
 
 		for(i=0;i<patch_y;i++)
 				for(j=0;j<patch_x;j++)
 					C[i][j] = 0;
 		
-		imshow("Coherency Based Spatio-Temporal SM (Up to 15 frames)",SM);
+		//SM = formula della mappa SM;
+
+		//imshow("Coherency Based Spatio-Temporal SM (Up to 15 frames)",SM);
 		
 		if(waitKey(10) == 27) //wait for 'esc' key press for 10 ms. If 'esc' key is pressed, break loop
 		{
