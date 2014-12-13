@@ -163,6 +163,7 @@ int main( int argc, char** argv )
 	/*-------------------------------------------------------------------------------------*/
 	VideoCapture cap; // open the video camera for reading (use a string for a file)
 	Mat frame, gray_frame;
+	Mat prev,next;
 	Mat bgr;//CV_32FC3 matrix
 	Mat flow;
 	Mat xy[2];
@@ -194,7 +195,7 @@ int main( int argc, char** argv )
 	float ***p;
 	float **C;
 	float s;
-	double minEigThreshold=1e-4;
+	double mag_max;
 
 	cap.open(0);
 	
@@ -203,7 +204,7 @@ int main( int argc, char** argv )
 	patch_x = WIDTH/16; //40 on hp-pavillion webcam
 	patch_y = HEIGHT/16; //30 on hp-pavillion webcam
 
-	C = new float*[patch_y];
+	/*C = new float*[patch_y];
 	for(i = 0; i < patch_y; ++i)
 		C[i] = new float[patch_x];
 	for(i=0;i<patch_y;i++)
@@ -222,7 +223,7 @@ int main( int argc, char** argv )
 	for(i = 0; i < patch_y; i++)
 		for(j = 0; j < patch_x; j++)
 			for(k=0;k<9;k++)
-				p[i][j][k] = 0;
+				p[i][j][k] = 0;*/
 
 	while(1)
     {
@@ -230,13 +231,13 @@ int main( int argc, char** argv )
 		{
 			cap >> frame; // read a new frame from video
 			
-			cvtColor(frame, gray_frame, CV_RGB2GRAY);
+			cvtColor(frame, gray_frame, CV_BGR2GRAY);
 		
-			frame.convertTo(I[N], -1, 1.2, 0);
+			frame.convertTo(next, -1, 1.2, 0);
 			
 			if(N > 0)
 			{
-				calcOpticalFlowSF(I[N-1], I[N], flow, 3, 2, 4);
+				calcOpticalFlowFarneback(prev, next, flow, 0.5, 3, 15, 3, 5, 1.2, 0);
 
 				split(flow, xy);
 
@@ -244,7 +245,7 @@ int main( int argc, char** argv )
 				cartToPolar(xy[0], xy[1], magnitude, angle, true);
 
 				//translate magnitude to range [0;1]
-				double mag_max;
+				mag_max;
 				minMaxLoc(magnitude, 0, &mag_max);
 				magnitude.convertTo(magnitude, -1, 1.0/mag_max);
 
@@ -259,7 +260,9 @@ int main( int argc, char** argv )
 				imshow("Optical Flow",bgr);
 			}
 
-			if(N == 14)
+			swap(prev, next);
+
+			/*if(N == 14)
 			{
 				d.compute(I[N], descriptorsValues, Size(0,0), Size(0,0), locations);
 		
@@ -278,7 +281,7 @@ int main( int argc, char** argv )
 						C[j][i] = -C[j][i];
 					}
 				}
-			}
+			}*/
 		}
 
 		//SM = formula della mappa SM;
