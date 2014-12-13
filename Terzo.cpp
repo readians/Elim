@@ -100,7 +100,6 @@ int main( int argc, char** argv )
 				cartToPolar(xy[0], xy[1], magnitude, angle, true);
 
 				//translate magnitude to range [0;1]
-				mag_max;
 				minMaxLoc(magnitude, 0, &mag_max);
 				magnitude.convertTo(magnitude, -1, 1.0/mag_max);
 
