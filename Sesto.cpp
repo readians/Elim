@@ -44,7 +44,7 @@ int min_arr_point(float *a){
 	return point;
 }
 
-void BMA(Mat A, Mat B, int blocksize, int p)
+void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy)
 {
 	//Mat flow = Mat::zeros(A.rows/blocksize,A.cols/blocksize, A.type());
 	Mat c,r;
@@ -52,23 +52,8 @@ void BMA(Mat A, Mat B, int blocksize, int p)
 	int HEIGHT = A.rows;
 	int patch_x = WIDTH/blocksize;
 	int patch_y = HEIGHT/blocksize;
-	int **MVx,**MVy;
 	int i,j,k,l;
 	float MAD, minMAD = (float)blocksize;
-
-	MVx = new int*[patch_y];
-	for(i = 0; i < patch_y; ++i)
-		MVx[i] = new int[patch_x];
-	for(i=0;i<patch_y;i++)
-		for(j=0;j<patch_x;j++)
-			MVx[i][j] = 0;
-
-	MVy = new int*[patch_y];
-	for(i = 0; i < patch_y; ++i)
-		MVy[i] = new int[patch_x];
-	for(i=0;i<patch_y;i++)
-		for(j=0;j<patch_x;j++)
-			MVy[i][j] = 0;
 
 	/*Start computing motion vectors for each block of the frame*/
 	for(i=0;i<=HEIGHT-blocksize;i+=blocksize)
@@ -100,8 +85,6 @@ void BMA(Mat A, Mat B, int blocksize, int p)
 			}
 			startB.release();
 			minMAD = (float)blocksize;
-			if(MVx[patch_y][patch_x]!=0 || MVy[patch_y][patch_x]!=0)
-				cout <<"("<<MVy[patch_y][patch_x]<<","<<MVx[patch_y][patch_x]<<") :"<<i<<","<<j<<endl;
 		}
 	}
 }
@@ -134,7 +117,7 @@ int main( int argc, char** argv )
 	int patch_y;
 	int maxLevel=3;
 	int flags = 0;
-	int **MV;
+	int **MVx,**MVy;
 	float ***p;
 	float **C;
 	float s;
@@ -168,26 +151,37 @@ int main( int argc, char** argv )
 		for(j = 0; j < patch_x; j++)
 			for(k=0;k<9;k++)
 				p[i][j][k] = 0;
-
-	MV = new int*[2];
-	for(i = 0; i < 2; ++i)
-		MV[i] = new int[(WIDTH*HEIGHT)/(16^2)];
+	MVx = new int*[patch_y];
+	for(i = 0; i < patch_y; ++i)
+		MVx[i] = new int[patch_x];
+	for(i=0;i<patch_y;i++)
+		for(j=0;j<patch_x;j++)
+			MVx[i][j] = 0;
+	MVy = new int*[patch_y];
+	for(i = 0; i < patch_y; ++i)
+		MVy[i] = new int[patch_x];
+	for(i=0;i<patch_y;i++)
+		for(j=0;j<patch_x;j++)
+			MVy[i][j] = 0;
 
 	/*************************************************************************/
 	prev = Mat::zeros(480,640, CV_8UC1);
 	next = Mat::zeros(480,640, CV_8UC1);
-
-	for(i=0;i<=7;i++)
-		for(j=0;j<=7;j++)
+	for(i=0;i<=15;i++)
+		for(j=0;j<=15;j++)
 		{
 			prev.data[WIDTH*i + j] = 255;
 			next.data[WIDTH*(i+4) + (j+4)] = 255;
 		}
-	BMA(prev, next, 16, 7);
+	BMA(prev, next, 16, 7, MVx, MVy);
+	for(i = 0; i < patch_y; i++)
+		for(j = 0; j < patch_x; j++)
+			if(MVx[i][j]!=0 || MVy[i][j]!=0)
+				cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
 	system("PAUSE");
 	/**************************************************************************/
 	while(1)
-    {
+    	{
 		//for(N=0;N<15;N++)
 		//{
 			cap >> frame; // read a new frame from video			
@@ -198,7 +192,7 @@ int main( int argc, char** argv )
 			
 			if(N > 0)
 			{
-				BMA(prev, next, 16, 7);
+				BMA(prev, next, 16, 7, MVx, MVy);
 				imshow("Optical Flow", frame);
 			}
 			N = 1;
@@ -238,7 +232,7 @@ int main( int argc, char** argv )
 		{
 			system("PAUSE");
 			cout << "esc key is pressed by user" << endl; 
-            break; 
+            		break; 
 		}
-    }
+    	}
 }
