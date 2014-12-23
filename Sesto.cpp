@@ -47,13 +47,14 @@ int min_arr_point(float *a){
 void BMA(Mat A, Mat B, int blocksize, int p)
 {
 	//Mat flow = Mat::zeros(A.rows/blocksize,A.cols/blocksize, A.type());
+	Mat c,r;
 	int WIDTH = A.cols;
 	int HEIGHT = A.rows;
 	int patch_x = WIDTH/blocksize;
 	int patch_y = HEIGHT/blocksize;
 	int **MVx,**MVy;
 	int i,j,k,l;
-	float MAD, minMAD = 65536;
+	float MAD, minMAD = (float)blocksize;
 
 	MVx = new int*[patch_y];
 	for(i = 0; i < patch_y; ++i)
@@ -71,26 +72,38 @@ void BMA(Mat A, Mat B, int blocksize, int p)
 
 	/*Start computing motion vectors for each block of the frame*/
 	for(i=0;i<=HEIGHT-blocksize;i+=blocksize)
+	{
 		for(j=0;j<=WIDTH-blocksize;j+=blocksize)
 		{
-			Mat curr(B, Rect(j,i,blocksize,blocksize));
+			patch_x = j/blocksize;
+			patch_y = i/blocksize;
+			Mat startB(A, Rect(j,i,blocksize,blocksize));
+			startB.copyTo(c);
 			for(k=i-p;k<=i+p;k++)
+			{
 				for(l=j-p;l<=j+p;l++)
 				{
-					if(l>=0 && l+blocksize<WIDTH && k>=0 && k+blocksize<HEIGHT)
+					if(l>=0 && l+blocksize<=WIDTH && k>=0 && k+blocksize<=HEIGHT)
 					{
-						Mat ref(A, Rect(l,k,blocksize,blocksize));
-						MAD = costFunMAD(curr,ref,blocksize);
-						if(MAD < minMAD)
+						Mat searchB(B, Rect(l,k,blocksize,blocksize));
+						searchB.copyTo(r);
+						MAD = costFunMAD(c,r,blocksize);
+						if((MAD<minMAD) || (l==j && k==i && MAD==minMAD))
 						{
 							minMAD = MAD;
-							MVx[i/blocksize][j/blocksize] = l;
-							MVy[i/blocksize][j/blocksize] = k;
+							MVx[patch_y][patch_x] = (l-j);
+							MVy[patch_y][patch_x] = (k-i);
 						}
+						searchB.release();
 					}
 				}
-			minMAD = 65536;
+			}
+			startB.release();
+			minMAD = (float)blocksize;
+			if(MVx[patch_y][patch_x]!=0 || MVy[patch_y][patch_x]!=0)
+				cout <<"("<<MVy[patch_y][patch_x]<<","<<MVx[patch_y][patch_x]<<") :"<<i<<","<<j<<endl;
 		}
+	}
 }
 
 
@@ -126,7 +139,7 @@ int main( int argc, char** argv )
 	float **C;
 	float s;
 
-	//namedWindow("Coherency Based Spatio-Temporal SM (Up to 15 frames)", CV_WINDOW_AUTOSIZE);
+	//namedWindow("Coherency Based STSM (Up to 15 frames)", CV_WINDOW_AUTOSIZE);
 	namedWindow("Optical Flow",1);
 	
 	cap.open(0);
@@ -160,6 +173,19 @@ int main( int argc, char** argv )
 	for(i = 0; i < 2; ++i)
 		MV[i] = new int[(WIDTH*HEIGHT)/(16^2)];
 
+	/*************************************************************************/
+	prev = Mat::zeros(480,640, CV_8UC1);
+	next = Mat::zeros(480,640, CV_8UC1);
+
+	for(i=0;i<=7;i++)
+		for(j=0;j<=7;j++)
+		{
+			prev.data[WIDTH*i + j] = 255;
+			next.data[WIDTH*(i+4) + (j+4)] = 255;
+		}
+	BMA(prev, next, 16, 7);
+	system("PAUSE");
+	/**************************************************************************/
 	while(1)
     {
 		//for(N=0;N<15;N++)
@@ -202,7 +228,7 @@ int main( int argc, char** argv )
 		
 		//SM = formula della mappa SM;
 
-		//imshow("Coherency Based Spatio-Temporal SM (Up to 15 frames)",SM);
+		//imshow("Coherency Based STSM (Up to 15 frames)",SM);
 
 		for(i=0;i<patch_y;i++)
 				for(j=0;j<patch_x;j++)
