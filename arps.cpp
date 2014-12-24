@@ -23,174 +23,103 @@ float costFunMAD(Mat curr, Mat ref, int n){
 	return err / (n*n);
 }
 
-float min_arr(float *a){
-	float min = 65537;
-
-	for(int i=0;i<sizeof(a)/sizeof(int);i++)
-		if (a[i] < min)
-			min = a[i];
-
-	return min;
-}
-
-int min_arr_point(float *a){
-	int point = 0;
-	float min = a[0];
-
-	for(int i=0;i<sizeof(a)/sizeof(int);i++)
-		if (a[i] < min)
-			point = i;
-	
-	return point;
-}
-
-int **BMA(Mat A, Mat B, int blocksize, int p)
+void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 {
 	//Mat flow = Mat::zeros(A.rows/blocksize,A.cols/blocksize, A.type());
-	int **checkMatrix;
+	Mat C,R;
 	int WIDTH = A.cols;
 	int HEIGHT = A.rows;
-	int **MV;
-	int refBlkVer,refBlkHor;
-	int i,j,k,l,x,y,stepSize,maxIndex,doneFlag;
-	int SDSP[5][2];
-	int LDSP[6][2];
-	int mbCount,point;
-	float minMAD = 255;
-	float costs[5] = {65537,65537,65537,65537,65537};
-	float cost;
-
-	checkMatrix = new int*[(2*p)+1];
-	for(i = 0; i < (2*p)+1; ++i)
-		checkMatrix[i] = new int[(2*p)+1];
-	for(i=0;i<(2*p)+1;i++)
-		for(j=0;j<(2*p)+1;j++)
-			checkMatrix[i][j] = 0;
-
-	MV = new int*[2];
-	for(i = 0; i < 2; ++i)
-		MV[i] = new int[(A.cols*A.rows)/(blocksize^2)];
-	for(i=0;i<2;i++)
-		for(j=0;j<(A.cols*A.rows)/(blocksize^2);j++)
-			MV[i][j] = 0;
-
-	SDSP[0][0] = 0; SDSP[0][1] = -1;
-	SDSP[1][0] = -1; SDSP[1][1] = 0;
-	SDSP[2][0] = 0; SDSP[2][1] = 0;
-	SDSP[3][0] = 1; SDSP[3][1] = 0;
-	SDSP[4][0] = 0; SDSP[4][1] = 1;
+	int patch_x = WIDTH/blocksize;
+	int patch_y = HEIGHT/blocksize;
+	int i,j,k,l,x,y,T,ind,maxind;
+	int POFS[5][2]; //Points of first search
+	int POLS[2]; //Point Of Local (second step) Search: 0 = y, 1 = x
+	int fifth[2];
+	float MAD, minMAD = 256;
 
 	/*Start computing motion vectors for each block of the frame*/
-	mbCount = 0;
 	for(i=0;i<=HEIGHT-blocksize;i+=blocksize)
+	{
 		for(j=0;j<=WIDTH-blocksize;j+=blocksize)
 		{
-			x = j;
-			y = i;
-
-			Mat currblck(A, Rect(i, j, blocksize, blocksize));
-			Mat refblck(B, Rect(i, j, blocksize, blocksize));
-			costs[2] = costFunMAD(currblck,refblck,blocksize);
-			checkMatrix[p+1][p+1] = 1;
-
-			if (j-1 < 0)
+			patch_x = j/blocksize;
+			patch_y = i/blocksize;
+			Mat startB(A, Rect(j,i,blocksize,blocksize));
+			startB.copyTo(C);
+			/*ZMP*/
+			Mat searchB(B, Rect(j,i,blocksize,blocksize));
+			searchB.copyTo(R);
+			MAD = costFunMAD(C,R,blocksize);
+			searchB.release();
+			if(MAD<thres)
 			{
-				stepSize = 2;
-				maxIndex = 5;
+				MVx[patch_y][patch_x] = 0;
+				MVy[patch_y][patch_x] = 0;
 			}
-			else 
+			else
 			{
-				stepSize = max(abs(MV[0][mbCount-1]), abs(MV[1][mbCount-1]));
-				if ((abs(MV[0][mbCount-1]) == stepSize && MV[1][mbCount-1] == 0)
-					|| (abs(MV[1][mbCount-1]) == stepSize && (MV[0][mbCount-1] == 0)))
-					maxIndex = 5; 
+				if(j==0)
+				{
+					T = 3;
+					maxind = 4;
+				}
 				else
 				{
-					maxIndex = 6;
-					LDSP[5][0] =  MV[1][mbCount-1]; LDSP[5][1] = MV[0][mbCount-1];
+					T = max(abs(MVx[patch_y][patch_x-1]),abs(MVy[patch_y][patch_x-1]));
+					fifth[0] = MVy[patch_y][patch_x-1]; fifth[1] = MVx[patch_y][patch_x-1];
+					maxind = 5;
 				}
-			}
+				POLS[0] = 0;
+				POLS[1] = 0;
+				POFS[0][0] = i;			POFS[0][1] = j-T;
+				POFS[1][0] = i;			POFS[1][1] = j+T;
+				POFS[2][0] = i-T;		POFS[2][1] = j;
+				POFS[3][0] = i+T;		POFS[3][1] = j;
+				POFS[4][0] = i+fifth[0];POFS[4][1] = j+fifth[1];
 
-			LDSP[0][0] = 0; LDSP[0][1] = -stepSize;
-			LDSP[1][0] = -stepSize; LDSP[1][1] = 0;
-			LDSP[2][0] = 0; LDSP[2][1] = 0;
-			LDSP[3][0] = stepSize; LDSP[3][1] = 0;
-			LDSP[4][0] = 0; LDSP[4][1] = stepSize;
-
-			for(k=0;k<maxIndex;k++)
-			{
-				refBlkVer = y + LDSP[k][1];   
-				refBlkHor = x + LDSP[k][0];  
-				if ( refBlkVer < 0 || refBlkVer+blocksize-1 >= HEIGHT || refBlkHor < 0 || refBlkHor+blocksize-1 >= WIDTH)
-					continue;
-			
-				if (k == 3 || stepSize == 0)
-					continue; 
-				
-				Mat currblck(A, Rect(i, j, blocksize, blocksize));
-				Mat refblck(B, Rect(refBlkVer, refBlkHor, blocksize, blocksize));
-				costs[k] = costFunMAD(currblck,refblck,blocksize);
-				checkMatrix[LDSP[k][1] + p+1][LDSP[k][0] + p+1] = 1;
-			}
-
-			cost = min_arr(costs);
-			point = min_arr_point(costs);
-
-			x = x + LDSP[point][0];
-			y = y + LDSP[point][1];
-
-			for(l=0;l<5;l++) costs[l] = 65537;
-			costs[2] = cost;
-
-			doneFlag = 0;   
-			while (doneFlag == 0)
-			{
-				for(k=0;k<5;k++)
+				/*Initial Search*/
+				for(ind=0;ind<maxind;ind++)
 				{
-					refBlkVer = y + SDSP[k][1]; 
-					refBlkHor = x + SDSP[k][0];
+					k = POFS[ind][0];
+					l = POFS[ind][1];
+					if(l>=0 && l+blocksize<=WIDTH && k>=0 && k+blocksize<=HEIGHT)
+					{
+						Mat searchB(B, Rect(l,k,blocksize,blocksize));
+						searchB.copyTo(R);
+						MAD = costFunMAD(C,R,blocksize);
+						if(MAD < minMAD)
+						{
+							POLS[0] = k-i;
+							POLS[1] = l-j;
+							minMAD = MAD;
+						}
+						searchB.release();
+					}
+				}
 
-					if ( refBlkVer < 0 || refBlkVer+blocksize-1 >= HEIGHT || refBlkHor < 0 || refBlkHor+blocksize-1 >= WIDTH)
-						  continue;
-					
-					if (k == 2)
-						continue;
-					else if (refBlkHor < j-p || refBlkHor > j+p || refBlkVer < i-p || refBlkVer > i+p)
-							continue;
-					else if (checkMatrix[y-i+SDSP[k][2]+p+1][x-j+SDSP[k][1]+p+1] == 1)
-						continue;
-					
-					Mat currblck(A, Rect(i, j, blocksize, blocksize));
-					Mat refblck(B, Rect(refBlkVer, refBlkHor, blocksize, blocksize));
-					costs[k] = costFunMAD(currblck,refblck,blocksize);
-					
-					checkMatrix[y-i+SDSP[k][2]+p+1][x-j+SDSP[k][1]+p+1] = 1;
-				}
-            
-				cost = min_arr(costs);
-				point = min_arr_point(costs);
-           
-				if (point == 2)
-					doneFlag = 1;
-				else
-				{
-					x = x + SDSP[point][0];
-					y = y + SDSP[point][1];
-					for(l=0;l<5;l++) costs[l] = 65537;
-					costs[2] = cost;
-				}
+				/*Local search using 3x3 mask*/
+				for(y=i+POLS[0]-3;y<=i+POLS[0]+3;y++)
+					for(x=j+POLS[1]-3;x<=j+POLS[1]+3;x++)
+					{
+						if(x>=0 && x+blocksize<=WIDTH && y>=0 && y+blocksize<=HEIGHT)
+						{
+							Mat searchB(B, Rect(x,y,blocksize,blocksize));
+							searchB.copyTo(R);
+							MAD = costFunMAD(C,R,blocksize);
+							if(MAD < minMAD)
+							{
+								MVy[patch_y][patch_x] = y-i;
+								MVx[patch_y][patch_x] = x-j;
+								minMAD = MAD;
+							}
+							searchB.release();
+						}
+					}
 			}
-
-			MV[0][mbCount] = y - i;
-			MV[1][mbCount] = x - j;              
-			mbCount = mbCount + 1;
-			for(l=0;l<5;l++) costs[l] = 65537;
-        
-			for(i=0;i<(2*p)+1;i++)
-				for(j=0;j<(2*p)+1;j++)
-					checkMatrix[i][j] = 0;
+			startB.release();
+			minMAD = 256;
 		}
-	return MV;
+	}
 }
 
 
@@ -199,7 +128,6 @@ int main( int argc, char** argv )
 	VideoCapture cap; // open the video camera for reading (use a string for a file)
 	Mat frame, gray_frame;
 	Mat prev,next;
-	Mat bgr;//CV_32FC3 matrix
 	Mat flow;
 	Mat SM;
 	vector<float> descriptorsValues;
@@ -222,12 +150,12 @@ int main( int argc, char** argv )
 	int patch_y;
 	int maxLevel=3;
 	int flags = 0;
-	int **MV;
+	int **MVx,**MVy;
 	float ***p;
 	float **C;
 	float s;
 
-	//namedWindow("Coherency Based Spatio-Temporal SM (Up to 15 frames)", CV_WINDOW_AUTOSIZE);
+	//namedWindow("Coherency Based STSM (Up to 15 frames)", CV_WINDOW_AUTOSIZE);
 	namedWindow("Optical Flow",1);
 	
 	cap.open(0);
@@ -256,15 +184,48 @@ int main( int argc, char** argv )
 		for(j = 0; j < patch_x; j++)
 			for(k=0;k<9;k++)
 				p[i][j][k] = 0;
+	
+	MVx = new int*[patch_y];
+	for(i = 0; i < patch_y; ++i)
+		MVx[i] = new int[patch_x];
+	
+	MVy = new int*[patch_y];
+	for(i = 0; i < patch_y; ++i)
+		MVy[i] = new int[patch_x];
+	
+	for(i=0;i<patch_y;i++)
+		for(j=0;j<patch_x;j++)
+		{
+			MVy[i][j] = 0;
+			MVx[i][j] = 0;
+		}
 
-	MV = new int*[2];
-	for(i = 0; i < 2; ++i)
-		MV[i] = new int[(WIDTH*HEIGHT)/(16^2)];
-
+	/*************************************************************************/
+	prev = Mat::zeros(480,640, CV_8UC1);
+	next = Mat::zeros(480,640, CV_8UC1);
+	for(i=0;i<=15;i++)
+		for(j=0;j<=15;j++)
+		{
+			prev.data[WIDTH*i + j] = 255;
+			next.data[WIDTH*(i+4) + (j+4)] = 255;
+		}
+	BMA(prev, next, 16, 7, MVx, MVy, 16);
+	for(i = 0; i < patch_y; i++)
+		for(j = 0; j < patch_x; j++)
+			if(MVx[i][j]!=0 || MVy[i][j]!=0)
+				cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
+	system("PAUSE");
+	/**************************************************************************/
 	while(1)
     {
 		//for(N=0;N<15;N++)
 		//{
+			for(i=0;i<patch_y;i++)
+				for(j=0;j<patch_x;j++)
+				{
+					MVy[i][j] = 0;
+					MVx[i][j] = 0;
+				}
 			cap >> frame; // read a new frame from video			
 			
 			cvtColor(frame, gray_frame, CV_BGR2GRAY);
@@ -273,7 +234,12 @@ int main( int argc, char** argv )
 			
 			if(N > 0)
 			{
-				MV = BMA(prev, next, 16, 7);
+				BMA(prev, next, 16, 7, MVx, MVy, 16);
+				for(i = 0; i < patch_y; i++)
+					for(j = 0; j < patch_x; j++)
+						if(MVx[i][j]!=0 || MVy[i][j]!=0)
+							cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
+				system("PAUSE");
 				imshow("Optical Flow", frame);
 			}
 			N = 1;
@@ -303,7 +269,7 @@ int main( int argc, char** argv )
 		
 		//SM = formula della mappa SM;
 
-		//imshow("Coherency Based Spatio-Temporal SM (Up to 15 frames)",SM);
+		//imshow("Coherency Based STSM (Up to 15 frames)",SM);
 
 		for(i=0;i<patch_y;i++)
 				for(j=0;j<patch_x;j++)
