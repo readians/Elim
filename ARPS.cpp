@@ -32,9 +32,9 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 	int patch_x = WIDTH/blocksize;
 	int patch_y = HEIGHT/blocksize;
 	int i,j,k,l,x,y,T,ind,maxind;
-	int POFS[5][2]; //Points of first search
+	int POFS[9][2]; //Points of first search
 	int POLS[2]; //Point Of Local (second step) Search: 0 = y, 1 = x
-	int fifth[2];
+	int ninth[2];
 	float MAD, minMAD = 256;
 
 	/*Start computing motion vectors for each block of the frame*/
@@ -46,6 +46,7 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 			patch_y = i/blocksize;
 			Mat startB(A, Rect(j,i,blocksize,blocksize));
 			startB.copyTo(C);
+			
 			/*ZMP*/
 			Mat searchB(B, Rect(j,i,blocksize,blocksize));
 			searchB.copyTo(R);
@@ -61,13 +62,13 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 				if(j==0)
 				{
 					T = 3;
-					maxind = 4;
+					maxind = 8;
 				}
 				else
 				{
 					T = max(abs(MVx[patch_y][patch_x-1]),abs(MVy[patch_y][patch_x-1]));
-					fifth[0] = MVy[patch_y][patch_x-1]; fifth[1] = MVx[patch_y][patch_x-1];
-					maxind = 5;
+					ninth[0] = MVy[patch_y][patch_x-1]; ninth[1] = MVx[patch_y][patch_x-1];
+					maxind = 9;
 				}
 				POLS[0] = 0;
 				POLS[1] = 0;
@@ -75,7 +76,11 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 				POFS[1][0] = i;			POFS[1][1] = j+T;
 				POFS[2][0] = i-T;		POFS[2][1] = j;
 				POFS[3][0] = i+T;		POFS[3][1] = j;
-				POFS[4][0] = i+fifth[0];POFS[4][1] = j+fifth[1];
+				POFS[4][0] = i-T;		POFS[4][1] = j-T;
+				POFS[5][0] = i-T;		POFS[5][1] = j+T;
+				POFS[6][0] = i+T;		POFS[6][1] = j-T;
+				POFS[7][0] = i+T;		POFS[7][1] = j+T;
+				POFS[8][0] = i+ninth[0];POFS[8][1] = j+ninth[1];
 
 				/*Initial Search*/
 				for(ind=0;ind<maxind;ind++)
@@ -97,9 +102,9 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 					}
 				}
 
-				/*Local search using 3x3 mask*/
-				for(y=i+POLS[0]-3;y<=i+POLS[0]+3;y++)
-					for(x=j+POLS[1]-3;x<=j+POLS[1]+3;x++)
+				/*Local search using pxp mask*/
+				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y++)
+					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x++)
 					{
 						if(x>=0 && x+blocksize<=WIDTH && y>=0 && y+blocksize<=HEIGHT)
 						{
@@ -209,7 +214,7 @@ int main( int argc, char** argv )
 			prev.data[WIDTH*i + j] = 255;
 			next.data[WIDTH*(i+4) + (j+4)] = 255;
 		}
-	BMA(prev, next, 16, 7, MVx, MVy, 16);
+	BMA(prev, next, 16, 3, MVx, MVy, 16);
 	for(i = 0; i < patch_y; i++)
 		for(j = 0; j < patch_x; j++)
 			if(MVx[i][j]!=0 || MVy[i][j]!=0)
@@ -234,12 +239,12 @@ int main( int argc, char** argv )
 			
 			if(N > 0)
 			{
-				BMA(prev, next, 16, 7, MVx, MVy, 16);
-				for(i = 0; i < patch_y; i++)
+				BMA(prev, next, 16, 3, MVx, MVy, 16);
+				/*for(i = 0; i < patch_y; i++)
 					for(j = 0; j < patch_x; j++)
 						if(MVx[i][j]!=0 || MVy[i][j]!=0)
 							cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
-				system("PAUSE");
+				system("PAUSE");*/
 				imshow("Optical Flow", frame);
 			}
 			N = 1;
