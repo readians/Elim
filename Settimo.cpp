@@ -12,6 +12,8 @@
 using namespace cv;
 using namespace std;
 
+#define PI 3.14159265359
+
 float costFunMAD(Mat curr, Mat ref, int n){
 	int i,j;
 	float err = 0;
@@ -136,6 +138,56 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 	}
 }
 
+Mat DrawGradients(int **My, int **Mx, int cellsize, Mat frame)
+{
+	double l_max = -cellsize;
+	int dx, dy;
+	Mat flow = frame;
+
+	for (int y = 0; y < frame.rows; y+=16)      // First iteration, to compute the maximum l (longest flow)
+	{
+		for (int x = 0; x < frame.cols; x+=16)
+		{
+			dx = Mx[y/cellsize][x/cellsize];  
+			dy = My[y/cellsize][x/cellsize];   
+			double l = sqrt(dx^2 + dy^2);       // This function sets a basic threshold for drawing on the image
+			if(l>l_max) l_max = l;
+		}
+	}
+
+
+	for (int y = 0; y < frame.rows; y+=cellsize)
+	{
+		for (int x = 0; x < frame.cols; x+=cellsize)
+		{
+			dx = Mx[y/cellsize][x/cellsize];  
+			dy = My[y/cellsize][x/cellsize];   
+	
+			CvPoint p = cvPoint(x, y);
+
+			double l = sqrt(dx*dx + dy*dy);       // This function sets a basic threshold for drawing on the image
+			if (l > 0)
+			{
+				double spinSize = l/3;   // Factor to normalise the size of the spin depeding on the length of the arrow
+
+				CvPoint p2 = cvPoint(p.x + (int)(dx), p.y + (int)(dy));
+				line(flow, p, p2, 127, 1, CV_AA);
+
+				double angle;    // Draws the spin of the arrow
+				angle = atan2( (double) p.y - p2.y, (double) p.x - p2.x );
+
+				p.x = (int) (p2.x + spinSize * cos(angle + 3.1416 / 4));
+				p.y = (int) (p2.y + spinSize * sin(angle + 3.1416 / 4));
+				line(flow, p, p2, 127, 1, CV_AA, 0);
+
+				p.x = (int) (p2.x + spinSize * cos(angle - 3.1416 / 4));
+				p.y = (int) (p2.y + spinSize * sin(angle - 3.1416 / 4));
+				line(flow, p, p2, 127, 1, CV_AA, 0);
+			}
+		}
+	}
+	return flow;
+}
 
 int main( int argc, char** argv )
 {
@@ -171,7 +223,8 @@ int main( int argc, char** argv )
 
 	//namedWindow("Coherency Based STSM (Up to 15 frames)", CV_WINDOW_AUTOSIZE);
 	namedWindow("Optical Flow",1);
-	
+	namedWindow("1",1);
+
 	cap.open(0);
 	
 	WIDTH = 640; //640 on hp-pavillion webcam
@@ -213,8 +266,8 @@ int main( int argc, char** argv )
 			MVy[i][j] = 0;
 			MVx[i][j] = 0;
 		}
-
 	/*************************************************************************/
+	cout << atan2(-4,-4)*180/PI<<endl;
 	prev = Mat::zeros(480,640, CV_8UC1);
 	next = Mat::zeros(480,640, CV_8UC1);
 	for(i=0;i<=15;i++)
@@ -222,13 +275,17 @@ int main( int argc, char** argv )
 		{
 			prev.data[WIDTH*i + j] = 255;
 			next.data[WIDTH*(i+4) + (j+4)] = 255;
+			prev.data[WIDTH*(i+64) + (j+64)] = 255;
+			next.data[WIDTH*(i+64) + (j+69)] = 255;
 		}
 	BMA(prev, next, 16, 3, MVx, MVy, 8);
+	flow = DrawGradients(MVy,MVx,16, prev);
 	for(i = 0; i < patch_y; i++)
 		for(j = 0; j < patch_x; j++)
 			if(MVx[i][j]!=0 || MVy[i][j]!=0)
 				cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
-	system("PAUSE");
+	imshow("Optical Flow", prev);
+	imshow("1", next);
 	/**************************************************************************/
 	while(1)
     {
@@ -249,12 +306,8 @@ int main( int argc, char** argv )
 			if(N > 0)
 			{
 				BMA(prev, next, 16, 3, MVx, MVy, 8);
-				/*for(i = 0; i < patch_y; i++)
-					for(j = 0; j < patch_x; j++)
-						if(MVx[i][j]!=0 || MVy[i][j]!=0)
-							cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
-				system("PAUSE");*/
-				imshow("Optical Flow", frame);
+				flow = DrawGradients(MVx,MVy,16, prev);
+				imshow("Optical Flow", flow);
 			}
 			N = 1;
 			swap(prev, next);
