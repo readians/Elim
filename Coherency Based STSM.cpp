@@ -7,6 +7,7 @@
 #include <iostream>
 #include <sstream>
 #include <string.h>
+#include <float.h>
 #include <math.h>
 
 using namespace cv;
@@ -149,7 +150,7 @@ float maxmag(int **Mx, int **My, int patchx, int patchy)
 	for(i=0;i<patchy;i++)
 		for(j=0;j<patchx;j++)
 		{
-			mag = (float)sqrt((Mx[i][j]^2)+(My[i][j]^2));
+			mag = (float)sqrt(pow(Mx[i][j],2.0)+pow(My[i][j],2.0));
 			if(mag > max)
 				max = mag;
 		}
@@ -214,7 +215,7 @@ int main( int argc, char** argv )
 {
 	VideoCapture cap; // open the video camera for reading (use a string for a file)
 	Mat frame, gray_frame;
-	Mat prev,next;
+	Mat prev,curr;
 	Mat flow;
 	Mat SM;
 	vector<float> descriptorsValues;
@@ -232,25 +233,27 @@ int main( int argc, char** argv )
 				// false //gamma correction,
 				// nlevels=64
 	int t,i,j,k,N=15;	
-	int WIDTH,HEIGHT;
+	int WIDTH,HEIGHT,cellsize = 16;
 	int patch_x;
 	int patch_y;
 	int **MVx,**MVy;
-	float ***p;
+	float p;
 	float ***M;
 	float ***theta;
-	float **C;
-	float s;
+	float **C,**Ment;
+	float s1,s2,MaxMag;
 
 	namedWindow("Coherency Based STSM", CV_WINDOW_AUTOSIZE);
 	//namedWindow("Optical Flow",1);
 
 	cap.open(0);
-	
-	WIDTH = 640; //640 on hp-pavillion webcam
-	HEIGHT = 480; //480 on hp-pavillion webcam
-	patch_x = WIDTH/16; //40 on hp-pavillion webcam
-	patch_y = HEIGHT/16; //30 on hp-pavillion webcam
+
+	cap >> frame;
+
+	WIDTH = frame.cols; //640 on hp-pavillion webcam
+	HEIGHT = frame.rows; //480 on hp-pavillion webcam
+	patch_x = WIDTH/cellsize; //40 on hp-pavillion webcam
+	patch_y = HEIGHT/cellsize; //30 on hp-pavillion webcam
 	
 	C = new float*[patch_y];
 	for(i = 0; i < patch_y; ++i)
@@ -258,24 +261,21 @@ int main( int argc, char** argv )
 	for(i=0;i<patch_y;i++)
 		for(j=0;j<patch_x;j++)
 			C[i][j] = 0;
-
-	p = new float**[patch_y];
-	for(i = 0; i < patch_y; i++)
-	{
-		p[i] = new float*[patch_x];
-		for(j = 0; j < patch_x; j++)
-		{
-			p[i][j] = new float[9];
-		}
-	}
 	
+	Ment = new float*[patch_y];
+	for(i = 0; i < patch_y; ++i)
+		Ment[i] = new float[patch_x];
+	for(i=0;i<patch_y;i++)
+		for(j=0;j<patch_x;j++)
+			Ment[i][j] = 0;
+
 	M = new float**[patch_y];
 	for(i = 0; i < patch_y; i++)
 	{
 		M[i] = new float*[patch_x];
 		for(j = 0; j < patch_x; j++)
 		{
-			M[i][j] = new float[15];
+			M[i][j] = new float[14];
 		}
 	}
 
@@ -285,7 +285,7 @@ int main( int argc, char** argv )
 		theta[i] = new float*[patch_x];
 		for(j = 0; j < patch_x; j++)
 		{
-			theta[i][j] = new float[15];
+			theta[i][j] = new float[14];
 		}
 	}
 
@@ -298,7 +298,7 @@ int main( int argc, char** argv )
 		MVy[i] = new int[patch_x];
 	
 	/*************************************************************************/
-	prev = Mat::zeros(480,640, CV_8UC1);
+	/*prev = Mat::zeros(480,640, CV_8UC1);
 	next = Mat::zeros(480,640, CV_8UC1);
 	for(i=0;i<=15;i++)
 		for(j=0;j<=15;j++)
@@ -310,65 +310,86 @@ int main( int argc, char** argv )
 		}
 	ARPS(prev, next, 16, 3, MVx, MVy, 8);
 	flow = DrawGradients(MVy,MVx,16, next);
-	for(i = 0; i < patch_y; i++)
-		for(j = 0; j < patch_x; j++)
-			if(MVx[i][j]!=0 || MVy[i][j]!=0)
-				cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
-	imshow("Optical Flow", flow);
+	imshow("Optical Flow", flow);*/
 	/**************************************************************************/
 	while(1)
-    {
+    	{
 		for(t=0;t<N;t++)
 		{
 			cap >> frame; // read a new frame from video			
 			
 			cvtColor(frame, gray_frame, CV_BGR2GRAY);
 
-			gray_frame.convertTo(next, -1, 1.2, 0);
+			gray_frame.convertTo(curr, -1, 1.2, 0);
 			
 			if(t > 0)
 			{
-				ARPS(prev, next, 16, 3, MVx, MVy, 8);
-				float MaxMag = maxmag(MVx,MVy,patch_x,patch_y);
+				ARPS(prev, curr, 16, 3, MVx, MVy, 8);
+				MaxMag = maxmag(MVx,MVy,patch_x,patch_y);
+				if(MaxMag==0)
+					MaxMag=1;
 				for(i=0;i<patch_y;i++)
 					for(j=0;j<patch_x;j++)
 					{
-						M[i][j][t] = (float)sqrt((MVx[i][j]^2)+(MVy[i][j]^2));
-						theta[i][j][t] = (float)atan2((double)MVy[i][j],(double)MVx[i][j]);
+						M[i][j][t-1] = (float)sqrt(pow(MVx[i][j],2.0)+pow(MVy[i][j],2.0))/MaxMag;
+						theta[i][j][t-1] = (float)atan2((double)MVy[i][j],(double)MVx[i][j]);
 					}
 			}
 			
 			if(t == 14)
 			{
-				d.compute(next, descriptorsValues, Size(0,0), Size(0,0), locations);
+				d.compute(curr, descriptorsValues, Size(0,0), Size(0,0), locations);
 		
-				for(i=0;i<patch_x;i++)
+				for(i=0;i<patch_y;i++)
 				{
-					for(j=0;j<patch_y;j++)
+					for(j=0;j<patch_x;j++)
 					{
-						s = 0;
+						s1 = 0;
+						s2 = 0;
 						for(k=0;k<9;k++)
-							s += descriptorsValues[(i * patch_y + j) * 9 + k];
+							s1 += descriptorsValues[(j * patch_y + i) * 9 + k];
 						for(k=0;k<9;k++)
 						{
-							p[j][i][k] = descriptorsValues[(i * patch_y + j) * 9 + k]/s;
-							C[j][i] += p[j][i][k]*log10(p[j][i][k]);
+							p = descriptorsValues[(j * patch_y + i) * 9 + k]/s1;
+							C[i][j] += p*log10(p);
 						}
-						C[j][i] = -C[j][i];
+						C[i][j] = -C[i][j];
+
+						for(k=0;k<t;k++)
+						{
+							s2 += M[i][j][k];
+						}
+						for(k=0;k<t;k++)
+						{
+							p = M[i][j][k]/s2;
+							if(s2 == 0 || p == 0)
+								Ment[i][j] += 0;
+							else
+								Ment[i][j] += p*log10(p);
+						}
+						Ment[i][j] = -Ment[i][j];
 					}
 				}
+				cout<<Ment[0][19]<<endl;
 			}
 			/*Swap current frame with the previous for next step*/
-			swap(prev, next);
+			swap(prev, curr);
 		}
 		
 		//SM = formula della mappa SM;
+		for (int y = 0; y < frame.rows; y+=cellsize)
+			for (int x = 0; x < frame.cols; x+=cellsize)
+				rectangle(frame, Point(x,y), Point(x+cellsize,y+cellsize), 127, 1);
+		circle(frame, Point((19*cellsize+cellsize/2),(0*cellsize)+cellsize/2), 7, 127, 2, 8, 0);
 
 		imshow("Coherency Based STSM",frame);
 
 		for(i=0;i<patch_y;i++)
-				for(j=0;j<patch_x;j++)
-					C[i][j] = 0;
+			for(j=0;j<patch_x;j++)
+			{
+				C[i][j] = 0;
+				Ment[i][j] = 0;
+			}
 		
 		if(waitKey(10) == 27) //wait for 'esc' key press for 10 ms. If 'esc' key is pressed, break loop
 		{
@@ -376,5 +397,5 @@ int main( int argc, char** argv )
 			cout << "esc key is pressed by user" << endl; 
             break; 
 		}
-  }
+    	}
 }
