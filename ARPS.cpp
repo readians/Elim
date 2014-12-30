@@ -217,6 +217,14 @@ int main( int argc, char** argv )
 	patch_x = WIDTH/cellsize; //40 on hp-pavillion webcam
 	patch_y = HEIGHT/cellsize; //30 on hp-pavillion webcam
 	
+	MVx = new int*[patch_y];
+	for(i = 0; i < patch_y; ++i)
+		MVx[i] = new int[patch_x];
+	
+	MVy = new int*[patch_y];
+	for(i = 0; i < patch_y; ++i)
+		MVy[i] = new int[patch_x];
+		
 	while(1)
     	{
 	
