@@ -7,10 +7,13 @@
 #include <iostream>
 #include <sstream>
 #include <string.h>
+#include <float.h>
 #include <math.h>
 
 using namespace cv;
 using namespace std;
+
+#define PI 3.14159265359
 
 float costFunMAD(Mat curr, Mat ref, int n){
 	int i,j;
@@ -23,7 +26,7 @@ float costFunMAD(Mat curr, Mat ref, int n){
 	return err / (n*n);
 }
 
-void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
+void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 {
 	//Mat flow = Mat::zeros(A.rows/blocksize,A.cols/blocksize, A.type());
 	Mat C,R;
@@ -59,7 +62,7 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 			}
 			else
 			{
-				if(j==0)
+				if(j==0 || (MVx[patch_y][patch_x-1]==0 && MVy[patch_y][patch_x-1]==0))
 				{
 					T = 3;
 					maxind = 8;
@@ -94,16 +97,24 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 						MAD = costFunMAD(C,R,blocksize);
 						if(MAD < minMAD)
 						{
-							POLS[0] = k-i;
-							POLS[1] = l-j;
+							MVy[patch_y][patch_x] = k-i;
+							MVx[patch_y][patch_x] = l-j;
 							minMAD = MAD;
+							if(minMAD < thres)
+								break;
 						}
 						searchB.release();
 					}
 				}
 
+				POLS[0] = MVy[patch_y][patch_x];
+				POLS[1] = MVx[patch_y][patch_x];
+
 				/*Local search using pxp mask*/
 				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y++)
+				{
+					if(minMAD==0)
+						break;
 					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x++)
 					{
 						if(x>=0 && x+blocksize<=WIDTH && y>=0 && y+blocksize<=HEIGHT)
@@ -116,10 +127,13 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 								MVy[patch_y][patch_x] = y-i;
 								MVx[patch_y][patch_x] = x-j;
 								minMAD = MAD;
+								if(minMAD==0)
+									break;
 							}
 							searchB.release();
 						}
 					}
+				}
 			}
 			startB.release();
 			minMAD = 256;
@@ -127,164 +141,106 @@ void BMA(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 	}
 }
 
+Mat DrawGradients(int **My, int **Mx, int cellsize, Mat frame)
+{
+	double l_max = -cellsize;
+	int dx, dy;
+	Mat flow;
+
+	frame.copyTo(flow);
+
+	for (int y = 0; y < frame.rows; y+=16)      // First iteration, to compute the maximum l (longest flow)
+	{
+		for (int x = 0; x < frame.cols; x+=16)
+		{
+			dx = Mx[y/cellsize][x/cellsize];  
+			dy = My[y/cellsize][x/cellsize];   
+			double l = sqrt(dx^2 + dy^2);       // This function sets a basic threshold for drawing on the image
+			if(l>l_max) l_max = l;
+		}
+	}
+
+	for (int y = 0; y < frame.rows; y+=cellsize)
+	{
+		for (int x = 0; x < frame.cols; x+=cellsize)
+		{
+			rectangle(flow, Point(x,y), Point(x+cellsize,y+cellsize), 127, 1);
+			dx = Mx[y/cellsize][x/cellsize];  
+			dy = My[y/cellsize][x/cellsize];   
+	
+			CvPoint p = cvPoint(x, y);
+
+			double l = sqrt(dx*dx + dy*dy);       // This function sets a basic threshold for drawing on the image
+			if (l > 0)
+			{
+				double spinSize = l/2;   // Factor to normalise the size of the spin depeding on the length of the arrow
+
+				CvPoint p2 = cvPoint(p.x + (int)(dx), p.y + (int)(dy));
+				line(flow, p, p2, 127, 1, CV_AA);
+
+				double angle;    // Draws the spin of the arrow
+				angle = atan2( (double) p.y - p2.y, (double) p.x - p2.x );
+
+				p.x = (int) (p2.x + spinSize * cos(angle + 3.1416 / 4));
+				p.y = (int) (p2.y + spinSize * sin(angle + 3.1416 / 4));
+				line(flow, p, p2, 127, 1, CV_AA, 0);
+
+				p.x = (int) (p2.x + spinSize * cos(angle - 3.1416 / 4));
+				p.y = (int) (p2.y + spinSize * sin(angle - 3.1416 / 4));
+				line(flow, p, p2, 127, 1, CV_AA, 0);
+			}
+		}
+	}
+	return flow;
+}
 
 int main( int argc, char** argv )
 {
 	VideoCapture cap; // open the video camera for reading (use a string for a file)
 	Mat frame, gray_frame;
-	Mat prev,next;
+	Mat prev,curr;
 	Mat flow;
-	Mat SM;
-	vector<float> descriptorsValues;
-	vector<Point> locations;
-	HOGDescriptor d(Size(640,480),Size(16,16),Size(16,16),Size(16,16),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
-				// Size(640,480), //winSize
-				// Size(16,16), //blocksize
-				// Size(16,16), //blockStride, if equal to blocksize there is no overlap
-				// Size(16,16), //cellSize
-				// 9, //nbins,
-				// 0, //derivAper,
-				// -1, //winSigma,
-				// 0, //histogramNormalizationType,
-				// 0.2, //L2HysThresh,
-				// false //gamma correction,
-				// nlevels=64
-	int i,j,k,N=0;	
-	int WIDTH,HEIGHT;
+	int t = 0,i,j,k;	
+	int WIDTH,HEIGHT,cellsize = 16;
 	int patch_x;
 	int patch_y;
-	int maxLevel=3;
-	int flags = 0;
 	int **MVx,**MVy;
-	float ***p;
-	float **C;
-	float s;
 
-	//namedWindow("Coherency Based STSM (Up to 15 frames)", CV_WINDOW_AUTOSIZE);
 	namedWindow("Optical Flow",1);
-	
+
 	cap.open(0);
-	
-	WIDTH = 640; //640 on hp-pavillion webcam
-	HEIGHT = 480; //480 on hp-pavillion webcam
-	patch_x = WIDTH/16; //40 on hp-pavillion webcam
-	patch_y = HEIGHT/16; //30 on hp-pavillion webcam
-	
-	C = new float*[patch_y];
-	for(i = 0; i < patch_y; ++i)
-		C[i] = new float[patch_x];
-	for(i=0;i<patch_y;i++)
-		for(j=0;j<patch_x;j++)
-			C[i][j] = 0;
-	p = new float**[patch_y];
-	for(i = 0; i < patch_y; i++)
-	{
-		p[i] = new float*[patch_x];
-		for(j = 0; j < patch_x; j++)
-		{
-			p[i][j] = new float[9];
-		}
-	}
-	for(i = 0; i < patch_y; i++)
-		for(j = 0; j < patch_x; j++)
-			for(k=0;k<9;k++)
-				p[i][j][k] = 0;
-	
-	MVx = new int*[patch_y];
-	for(i = 0; i < patch_y; ++i)
-		MVx[i] = new int[patch_x];
-	
-	MVy = new int*[patch_y];
-	for(i = 0; i < patch_y; ++i)
-		MVy[i] = new int[patch_x];
-	
-	for(i=0;i<patch_y;i++)
-		for(j=0;j<patch_x;j++)
-		{
-			MVy[i][j] = 0;
-			MVx[i][j] = 0;
-		}
 
-	/*************************************************************************/
-	prev = Mat::zeros(480,640, CV_8UC1);
-	next = Mat::zeros(480,640, CV_8UC1);
-	for(i=0;i<=15;i++)
-		for(j=0;j<=15;j++)
-		{
-			prev.data[WIDTH*i + j] = 255;
-			next.data[WIDTH*(i+4) + (j+4)] = 255;
-		}
-	BMA(prev, next, 16, 3, MVx, MVy, 16);
-	for(i = 0; i < patch_y; i++)
-		for(j = 0; j < patch_x; j++)
-			if(MVx[i][j]!=0 || MVy[i][j]!=0)
-				cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
-	system("PAUSE");
-	/**************************************************************************/
+	cap >> frame;
+
+	WIDTH = frame.cols; //640 on hp-pavillion webcam
+	HEIGHT = frame.rows; //480 on hp-pavillion webcam
+	patch_x = WIDTH/cellsize; //40 on hp-pavillion webcam
+	patch_y = HEIGHT/cellsize; //30 on hp-pavillion webcam
+	
 	while(1)
-    {
-		//for(N=0;N<15;N++)
-		//{
-			for(i=0;i<patch_y;i++)
-				for(j=0;j<patch_x;j++)
-				{
-					MVy[i][j] = 0;
-					MVx[i][j] = 0;
-				}
-			cap >> frame; // read a new frame from video			
-			
-			cvtColor(frame, gray_frame, CV_BGR2GRAY);
-
-			gray_frame.convertTo(next, -1, 1.2, 0);
-			
-			if(N > 0)
-			{
-				BMA(prev, next, 16, 3, MVx, MVy, 16);
-				/*for(i = 0; i < patch_y; i++)
-					for(j = 0; j < patch_x; j++)
-						if(MVx[i][j]!=0 || MVy[i][j]!=0)
-							cout <<"("<<MVy[i][j]<<","<<MVx[i][j]<<") :"<<i<<","<<j<<endl;
-				system("PAUSE");*/
-				imshow("Optical Flow", frame);
-			}
-			N = 1;
-			swap(prev, next);
-			
-			if(N == 14)
-			{
-				d.compute(next, descriptorsValues, Size(0,0), Size(0,0), locations);
+    	{
+	
+		cap >> frame; // read a new frame from video			
 		
-				for(i=0;i<patch_x;i++)
-				{
-					for(j=0;j<patch_y;j++)
-					{
-						s = 0;
-						for(k=0;k<9;k++)
-							s += descriptorsValues[(i * patch_y + j) * 9 + k];
-						for(k=0;k<9;k++)
-						{
-							p[j][i][k] = descriptorsValues[(i * patch_y + j) * 9 + k]/s;
-							C[j][i] += p[j][i][k]*log10(p[j][i][k]);
-						}
-						C[j][i] = -C[j][i];
-					}
-				}
-			}
-		//}
-		
-		//SM = formula della mappa SM;
+		cvtColor(frame, gray_frame, CV_BGR2GRAY);
 
-		//imshow("Coherency Based STSM (Up to 15 frames)",SM);
-
-		for(i=0;i<patch_y;i++)
-				for(j=0;j<patch_x;j++)
-					C[i][j] = 0;
+		gray_frame.convertTo(curr, -1, 1.2, 0);
 		
+		if(t > 0)
+		{
+			ARPS(prev, curr, 16, 3, MVx, MVy, 8);
+			flow = DrawGradients(MVy, MVx, 16, curr);
+			imshow("Optical Flow", flow);
+		}
+		
+		/*Swap current frame with the previous for next step*/
+		swap(prev, curr);
+		t = 1;
 		if(waitKey(10) == 27) //wait for 'esc' key press for 10 ms. If 'esc' key is pressed, break loop
 		{
 			system("PAUSE");
 			cout << "esc key is pressed by user" << endl; 
-            break; 
+            		break; 
 		}
-    }
+	}
 }
