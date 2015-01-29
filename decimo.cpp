@@ -157,59 +157,6 @@ float maxmag(int **Mx, int **My, int patchx, int patchy)
 	return max;
 }
 
-Mat DrawGradients(int **My, int **Mx, int cellsize, Mat frame)
-{
-	double l_max = -cellsize;
-	int dx, dy;
-	Mat flow;
-
-	frame.copyTo(flow);
-
-	for (int y = 0; y < frame.rows; y+=16)      // First iteration, to compute the maximum l (longest flow)
-	{
-		for (int x = 0; x < frame.cols; x+=16)
-		{
-			dx = Mx[y/cellsize][x/cellsize];  
-			dy = My[y/cellsize][x/cellsize];   
-			double l = sqrt(dx^2 + dy^2);       // This function sets a basic threshold for drawing on the image
-			if(l>l_max) l_max = l;
-		}
-	}
-
-	for (int y = 0; y < frame.rows; y+=cellsize)
-	{
-		for (int x = 0; x < frame.cols; x+=cellsize)
-		{
-			rectangle(flow, Point(x,y), Point(x+cellsize,y+cellsize), 127, 1);
-			dx = Mx[y/cellsize][x/cellsize];  
-			dy = My[y/cellsize][x/cellsize];   
-	
-			CvPoint p = cvPoint(x, y);
-
-			double l = sqrt(dx*dx + dy*dy);       // This function sets a basic threshold for drawing on the image
-			if (l > 0)
-			{
-				double spinSize = l/2;   // Factor to normalise the size of the spin depeding on the length of the arrow
-
-				CvPoint p2 = cvPoint(p.x + (int)(dx), p.y + (int)(dy));
-				line(flow, p, p2, 127, 1, CV_AA);
-
-				double angle;    // Draws the spin of the arrow
-				angle = atan2( (double) p.y - p2.y, (double) p.x - p2.x );
-
-				p.x = (int) (p2.x + spinSize * cos(angle + 3.1416 / 4));
-				p.y = (int) (p2.y + spinSize * sin(angle + 3.1416 / 4));
-				line(flow, p, p2, 127, 1, CV_AA, 0);
-
-				p.x = (int) (p2.x + spinSize * cos(angle - 3.1416 / 4));
-				p.y = (int) (p2.y + spinSize * sin(angle - 3.1416 / 4));
-				line(flow, p, p2, 127, 1, CV_AA, 0);
-			}
-		}
-	}
-	return flow;
-}
-
 
 int main( int argc, char** argv )
 {
@@ -230,7 +177,7 @@ int main( int argc, char** argv )
 	double ***M;
 	double ***theta;
 	double **C,**Ment,**Mcs,**Dent,**Dcs;
-	double s,MaxMag,MTemp,thetaTemp,arg;
+	double s,MaxMag,MTemp,thetaTemp;
 	HOGDescriptor d(Size(640,480),Size(cellsize,cellsize),Size(cellsize,cellsize),Size(cellsize,cellsize),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
 				// Size(640,480), //winSize
 				// Size(16,16), //blocksize
@@ -339,16 +286,13 @@ int main( int argc, char** argv )
 					for(j=0;j<patch_x;j++)
 					{
 						M[i][j][t-1] = (double)sqrt(pow(MVx[i][j],2.0)+pow(MVy[i][j],2.0))/MaxMag;
-						if(MVx[i][j] != 0)	
-						{
-							arg = MVy[i][j]/MVx[i][j];
-							theta[i][j][t-1] = atan(arg);
-						}
+						if(MVx[i][j] != 0 || MVy[i][j] != 0)	
+							theta[i][j][t-1] = atan2(MVy[i][j],MVx[i][j]);
 						else
 							theta[i][j][t-1] = 0;
 						if(theta[i][j][t-1]<0)
 							theta[i][j][t-1] += (2*PI);
-						theta[i][j][t-1] /= PI;
+						theta[i][j][t-1] /= (2*PI);
 					}
 			}
 
@@ -445,14 +389,14 @@ int main( int argc, char** argv )
 			swap(prev, curr);
 		}	
 		
-		/*for (int y = 0; y < frame.rows; y+=cellsize)
+		for (int y = 0; y < frame.rows; y+=cellsize)
 			for (int x = 0; x < frame.cols; x+=cellsize)
 				rectangle(frame, Point(x,y), Point(x+cellsize,y+cellsize), 127, 1);
-		circle(frame, Point((19*cellsize+cellsize/2),(1*cellsize)+cellsize/2), 7, 127, 2, 8, 0);
+		circle(frame, Point((39*cellsize+cellsize/2),(1*cellsize)+cellsize/2), 7, 127, 2, 8, 0);
 
-		cout<<C[1][19]<<"\t"<<Ment[1][19]<<"\t"<<Dent[1][19]<<"\t"<<Mcs[1][19]<<"\t"<<Dcs[1][19]<<endl;*/
+		cout<<C[1][39]<<"\t"<<Ment[1][39]<<"\t"<<Dent[1][39]<<"\t"<<Mcs[1][39]<<"\t"<<Dcs[1][39]<<endl;
 
-		imshow("Coherency Based STSM",SM);
+		imshow("Coherency Based STSM",frame);
 
 		/*Reset maps*/
 		for(i=0;i<patch_y;i++)
