@@ -111,11 +111,11 @@ void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 				POLS[1] = MVx[patch_y][patch_x];
 
 				/*Local search using pxp mask*/
-				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y++)
+				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y+=p)
 				{
-					if(minMAD==0)
+					if(minMAD<thres)
 						break;
-					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x++)
+					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x+=p)
 					{
 						if(x>=0 && x+blocksize<=WIDTH && y>=0 && y+blocksize<=HEIGHT)
 						{
@@ -127,7 +127,7 @@ void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 								MVy[patch_y][patch_x] = y-i;
 								MVx[patch_y][patch_x] = x-j;
 								minMAD = MAD;
-								if(minMAD==0)
+								if(minMAD<thres)
 									break;
 							}
 							searchB.release();
