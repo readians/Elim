@@ -1,4 +1,6 @@
 #include <opencv2/core/core.hpp>
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/objdetect/objdetect.hpp>
@@ -111,11 +113,11 @@ void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 				POLS[1] = MVx[patch_y][patch_x];
 
 				/*Local search using pxp mask*/
-				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y++)
+				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y+=p)
 				{
-					if(minMAD==0)
+					if(minMAD < thres)
 						break;
-					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x++)
+					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x+=p)
 					{
 						if(x>=0 && x+blocksize<=WIDTH && y>=0 && y+blocksize<=HEIGHT)
 						{
@@ -127,7 +129,7 @@ void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 								MVy[patch_y][patch_x] = y-i;
 								MVx[patch_y][patch_x] = x-j;
 								minMAD = MAD;
-								if(minMAD==0)
+								if(minMAD < thres)
 									break;
 							}
 							searchB.release();
@@ -164,9 +166,11 @@ int main( int argc, char** argv )
 	Mat frame, gray_frame;
 	Mat prev,curr;
 	Mat flow;
-	Mat SM;
+	Mat SM,SMBin;
 	vector<float> descriptorsValues;
 	vector<Point> locations;
+	vector<vector<Point>> contours;
+	vector<Vec4i> hierarchy;
 	int t = 0,i,j,k,l,N=15;	
 	int WIDTH,HEIGHT,cellsize = 8;
 	int patch_x;
@@ -264,6 +268,7 @@ int main( int argc, char** argv )
 		}
 
 	SM = Mat::zeros(HEIGHT,WIDTH, CV_64F);
+	SMBin = Mat::zeros(HEIGHT,WIDTH, CV_8UC1);
 	/*-----------------------------------Variables defination complete---------------------------------------*/
 	while(1)
     {
@@ -273,7 +278,7 @@ int main( int argc, char** argv )
 			
 			cvtColor(frame, gray_frame, CV_BGR2GRAY); //Change to grayscale
 
-			gray_frame.convertTo(curr, -1, 1.2, 0); //"curr" is the current frame
+			gray_frame.convertTo(curr, -1, 1, 0); //"curr" is the current frame
 			
 			/*Computing M and theta for each block of the frame with respect the previous frame t-1*/
 			if(t > 0)
@@ -376,7 +381,7 @@ int main( int argc, char** argv )
 						
 						/*Final Spatio Temporal Saliency Map for block(i,j)*/
 						s = (w*(1-C[i][j]) + (1-w)*(Ment[i][j]*Mcs[i][j]+(1-Dent[i][j])*Dcs[i][j]));
-						/*Thresholding*/
+						/*Zero Thresholding*/
 						if(s<0.3)
 							s = 0;
 						for(k=i*cellsize;k<(i*cellsize)+cellsize;k++)
@@ -396,7 +401,15 @@ int main( int argc, char** argv )
 
 		cout<<C[1][39]<<"\t"<<Ment[1][39]<<"\t"<<Dent[1][39]<<"\t"<<Mcs[1][39]<<"\t"<<Dcs[1][39]<<endl;
 
-		imshow("Coherency Based STSM",frame);
+	    /*findContours(SMBin, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+		int idx = 0;
+		for( ; idx >= 0; idx = hierarchy[idx][0] )
+		{
+			Scalar color( rand()&255, rand()&255, rand()&255 );
+			drawContours(frame, contours, idx, color, CV_FILLED, 8, hierarchy );
+		}*/
+
+		imshow("Coherency Based STSM",SM);
 
 		/*Reset maps*/
 		for(i=0;i<patch_y;i++)
