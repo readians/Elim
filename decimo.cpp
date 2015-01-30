@@ -113,11 +113,11 @@ void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 				POLS[1] = MVx[patch_y][patch_x];
 
 				/*Local search using pxp mask*/
-				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y+=p)
+				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y++)
 				{
 					if(minMAD < thres)
 						break;
-					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x+=p)
+					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x++)
 					{
 						if(x>=0 && x+blocksize<=WIDTH && y>=0 && y+blocksize<=HEIGHT)
 						{
@@ -165,8 +165,8 @@ int main( int argc, char** argv )
 	VideoCapture cap; // open the video camera for reading (use a string for a file)
 	Mat frame, gray_frame;
 	Mat prev,curr;
-	Mat flow;
-	Mat SM,SMBin;
+	Mat canny_out;
+	Mat SM,SM8U;
 	vector<float> descriptorsValues;
 	vector<Point> locations;
 	vector<vector<Point>> contours;
@@ -196,6 +196,7 @@ int main( int argc, char** argv )
 				// nlevels=64
 	/*Set window for the output map*/
 	namedWindow("Coherency Based STSM", CV_WINDOW_AUTOSIZE);
+	namedWindow("prova",CV_WINDOW_AUTOSIZE);
 
 	/*Open webcam*/
 	cap.open(0);
@@ -268,7 +269,7 @@ int main( int argc, char** argv )
 		}
 
 	SM = Mat::zeros(HEIGHT,WIDTH, CV_64F);
-	SMBin = Mat::zeros(HEIGHT,WIDTH, CV_8UC1);
+	SM8U = Mat::zeros(HEIGHT,WIDTH, CV_8UC1);
 	/*-----------------------------------Variables defination complete---------------------------------------*/
 	while(1)
     {
@@ -380,13 +381,16 @@ int main( int argc, char** argv )
 						Dcs[i][j] = Dcs[i][j]/8;
 						
 						/*Final Spatio Temporal Saliency Map for block(i,j)*/
-						s = (w*(1-C[i][j]) + (1-w)*(Ment[i][j]*Mcs[i][j]+(1-Dent[i][j])*Dcs[i][j]));
+						s = (w*(1-C[i][j]) + (1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
 						/*Zero Thresholding*/
 						if(s<0.3)
 							s = 0;
 						for(k=i*cellsize;k<(i*cellsize)+cellsize;k++)
 							for(l=j*cellsize;l<(j*cellsize)+cellsize;l++)
+							{
 								SM.at<double>(k,l) = s;
+								SM8U.data[WIDTH*k+l] = (uchar)(s*255); 
+							}
 					}
 				}
 			}
@@ -401,15 +405,17 @@ int main( int argc, char** argv )
 
 		cout<<C[1][39]<<"\t"<<Ment[1][39]<<"\t"<<Dent[1][39]<<"\t"<<Mcs[1][39]<<"\t"<<Dcs[1][39]<<endl;
 
-	    /*findContours(SMBin, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
-		int idx = 0;
-		for( ; idx >= 0; idx = hierarchy[idx][0] )
+		//Canny(SM8U,canny_out,80,160,3);
+		findContours(SM8U, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+		for(i = 0; i< contours.size(); i++ )
 		{
-			Scalar color( rand()&255, rand()&255, rand()&255 );
-			drawContours(frame, contours, idx, color, CV_FILLED, 8, hierarchy );
-		}*/
+			Scalar color = Scalar(0, 255, 0);
+			drawContours(frame, contours, i, color, 2, 8, hierarchy, 0, Point());
+		}
 
-		imshow("Coherency Based STSM",SM);
+		/*Show result*/
+		imshow("Coherency Based STSM",frame);
+		imshow("prova",SM8U);
 
 		/*Reset maps*/
 		for(i=0;i<patch_y;i++)
