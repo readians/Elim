@@ -16,6 +16,7 @@ using namespace cv;
 using namespace std;
 
 #define PI 3.14159265359
+#define eu 2.7182818284
 
 float costFunMAD(Mat curr, Mat ref, int n){
 	int i,j;
@@ -28,7 +29,7 @@ float costFunMAD(Mat curr, Mat ref, int n){
 	return err / (n*n);
 }
 
-void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
+void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, double thres)
 {
 	//Mat flow = Mat::zeros(A.rows/blocksize,A.cols/blocksize, A.type());
 	Mat C,R;
@@ -162,15 +163,15 @@ float maxmag(int **Mx, int **My, int patchx, int patchy)
 
 int main( int argc, char** argv )
 {
-	String file_name = "parachute.avi";
-	VideoCapture cap(file_name); // open the video camera for reading (use a string for a file)
-	Mat input, frame, gray_frame;
-	Mat prev,curr;
-	Mat canny_out;
+	String file_name = "birdfall2.avi";
+	VideoCapture cap(file_name); // open the video (0 for webcam, string for a file)
+	Mat input, frame, prev, curr, gray_frame;
+	Mat fgmask,fgimg,bgimg,tmp,tmp1,canny_out,gradx,grady;
 	Mat SM;
-	//Size im_resize = Size(256,320); /*birdfall2*/
-	Size im_resize = Size(408,352); /*parachute*/
-	//Size im_resize = Size(400,320); /*girl*/
+	//Rect im_resize = Rect(0,0,640,480); /*Cam*/
+	Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
+	//Rect im_resize = Rect(0,0,408,352); /*parachute*/
+	//Rect im_resize = Rect(0,0,400,320); /*girl*/
 	vector<float> descriptorsValues;
 	vector<Point> locations;
 	vector<vector<Point>> contours;
@@ -181,14 +182,25 @@ int main( int argc, char** argv )
 	int patch_y;
 	int **MVx,**MVy;
 	bool flag = false;
-	double w = 0.3, SM_thresh = 0.3, ARPS_thresh = 12;
-	double p;
+	double w = 1, SM_thresh = 0, ARPS_thresh = 16;
+	double p,k_e = 0.2;
 	double ***M;
 	double ***theta;
 	double **C,**Ment,**Mcs,**Dent,**Dcs;
 	double s,MaxMag,MTemp,thetaTemp;
-	BackgroundSubtractorMOG2 bg_model;
-	HOGDescriptor d(im_resize,Size(cellsize,cellsize),Size(cellsize,cellsize),Size(cellsize,cellsize),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
+	
+	namedWindow("CSM",CV_WINDOW_AUTOSIZE);
+	namedWindow("Current Frame",CV_WINDOW_AUTOSIZE);
+	namedWindow("Curr",CV_WINDOW_AUTOSIZE);
+	/*Read new frame*/
+	cap >> input;
+	/*Adjust image input*/
+	frame = input(im_resize);
+	cvtColor(frame, gray_frame, CV_BGR2GRAY);
+	equalizeHist( gray_frame, tmp );
+	tmp.convertTo(curr, -1, 1, 0);
+	/*Set HOG descriptor*/
+	HOGDescriptor d(curr.size(),Size(cellsize,cellsize),Size(cellsize,cellsize),Size(cellsize,cellsize),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
 				// Size(640,480), //winSize
 				// Size(16,16), //blocksize
 				// Size(16,16), //blockStride, if equal to blocksize there is no overlap
@@ -200,14 +212,7 @@ int main( int argc, char** argv )
 				// 0.2, //L2HysThresh,
 				// false //gamma correction,
 				// nlevels=64
-	namedWindow("Coherency Based STSM", CV_WINDOW_AUTOSIZE);
-	namedWindow("Current Frame",CV_WINDOW_AUTOSIZE);
-
-	/*Read new frame*/
-	cap >> input;
-	/*Resize frame*/
-	resize(input,frame,im_resize);
-	/*-----------------------------------Define variables according to frame dimensions ----------------------*/
+	/*-----------------------------------Instantiate variables according to frame dimensions ----------------------*/
 	WIDTH = frame.cols; 
 	HEIGHT = frame.rows; 
 	patch_x = WIDTH/cellsize; 
@@ -275,19 +280,16 @@ int main( int argc, char** argv )
 	SM = Mat::zeros(HEIGHT,WIDTH, CV_8UC1);
 	/*-----------------------------------Variables defination complete---------------------------------------*/
 	while(1)
-	{
-		resize(input,frame,im_resize);
-		cvtColor(frame, gray_frame, CV_BGR2GRAY);
-		gray_frame.convertTo(curr, -1, 1, 0); //"curr" is the current frame
-		
-		if(flag==false)	
+	{	
+		if(!flag)	
 			fr = max(0,t-1);
 		else
 			fr = (fr+1)%(N-1);
+
 		/*Computing M and theta for each block of the frame with respect the previous frame t-1*/
 		if(t > 0 || flag == true)
 		{	
-			ARPS(prev, curr, cellsize, 7, MVx, MVy, ARPS_thresh);
+			ARPS(prev, curr, cellsize, 6, MVx, MVy, ARPS_thresh);
 			MaxMag = maxmag(MVx,MVy,patch_x,patch_y);
 			if(MaxMag==0)
 				MaxMag=1;
@@ -295,8 +297,6 @@ int main( int argc, char** argv )
 				for(j=0;j<patch_x;j++)
 				{
 					M[i][j][fr] = sqrt(pow(MVx[i][j],2.0)+pow(MVy[i][j],2.0))/MaxMag;
-					////if(M[i][j][fr]<0.2)
-						//M[i][j][fr] = 0;
 					if(MVx[i][j] != 0 || MVy[i][j] != 0)	
 						theta[i][j][fr] = atan2(MVy[i][j],MVx[i][j]);
 					else
@@ -321,35 +321,34 @@ int main( int argc, char** argv )
 					s = 0;
 					for(k=0;k<9;k++)
 						s += descriptorsValues[(j * patch_y + i) * 9 + k];
+						//s += pow(eu,-(descriptorsValues[(j * patch_y + i) * 9 + k]/k_e));
 					if(s!=0)
 						for(k=0;k<9;k++)
 						{
 							p = descriptorsValues[(j * patch_y + i) * 9 + k]/s;
+							//p = pow(eu,-(descriptorsValues[(j * patch_y + i) * 9 + k]/k_e))/s;
 							if(p == 0)
 								continue;
 							else
-								C[i][j] += p*log10(p);
+								C[i][j] += p*(log10(p));
 						}
-					else
-						C[i][j] = 0;
 					C[i][j] = -C[i][j];
-					C[i][j] = (1 - C[i][j]);
 
 					/*Motion Entropy Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<N-1;k++)
+						//s += pow(eu,-(M[i][j][k]/k_e));
 						s += M[i][j][k];
 					if(s!=0)
 						for(k=0;k<N-1;k++)
 						{
-							p = (M[i][j][k]/s);
+							//p = (pow(eu,-(M[i][j][k]/k_e))/s);
+							p = M[i][j][k]/s;
 							if(p == 0)
 								continue;
 							else
 								Ment[i][j] += p*log10(p);
 						}
-					else
-						Ment[i][j] = 0;
 					Ment[i][j] = -Ment[i][j];
 						
 					/*Motion CS Map for block(i,j)*/
@@ -367,18 +366,18 @@ int main( int argc, char** argv )
 					/*Direction Entropy Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<N-1;k++)
+						//s += pow(eu,-(theta[i][j][k]/k_e));
 						s += theta[i][j][k];
 					if(s!=0)
 						for(k=0;k<N-1;k++)
 						{
-							p = (theta[i][j][k]/s);
+							//p = (pow(eu,-(theta[i][j][k]/k_e))/s);
+							p = theta[i][j][k]/s;
 							if(p == 0)
 								continue;
 							else
 								Dent[i][j] += p*log10(p);
 						}
-					else
-						Dent[i][j] = 0;
 					Dent[i][j] = -Dent[i][j];
 						
 					/*Direction CS Map for block(i,j)*/
@@ -394,7 +393,7 @@ int main( int argc, char** argv )
 					Dcs[i][j] = Dcs[i][j]/8;
 						
 					/*Final Spatio Temporal Saliency Map for block(i,j)*/
-					s = (w*(1-C[i][j]) + (1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
+					s = (w*(1-C[i][j])) + ((1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
 					/*Zero Thresholding*/
 					if(s<SM_thresh)
 						s = 0;
@@ -405,17 +404,26 @@ int main( int argc, char** argv )
 			}
 		}/*End if*/	
 		
-		//Canny(SM,canny_out,0,255,3);
-		findContours(SM, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
-		for(i = 0; i< contours.size(); i++ )
+		/*Find and draw contours*/
+		Canny(SM, canny_out, 0, 255, 3);//with or without, explained later.
+		findContours(canny_out, contours, hierarchy, CV_RETR_EXTERNAL, 2, Point(0,0));
+		for (vector<vector<Point> >::iterator it = contours.begin(); it!=contours.end(); )
+		{
+			if (it->size()<50)
+				it=contours.erase(it);
+			else
+				++it;
+		}
+		for(i = 0; i<contours.size(); i++ )
 		{
 			Scalar color = Scalar(0, 255, 0);
 			drawContours(frame, contours, i, color, 2, 8, hierarchy, 0, Point());
 		}
 
 		/*Show result*/
-		imshow("Coherency Based STSM",SM);
+		imshow("CSM",SM);
 		imshow("Current Frame",frame);
+		imshow("Curr",curr);
 		/*Swap current frame with the previous for next step*/
 		swap(prev, curr);
 		/*Read new frame*/
@@ -424,14 +432,25 @@ int main( int argc, char** argv )
 		{
 			cap = VideoCapture(file_name);
 			cap >> input;
+			frame = input(im_resize);
+			cvtColor(frame, gray_frame, CV_BGR2GRAY);
+			equalizeHist( gray_frame, tmp );
+			tmp.convertTo(curr, -1, 1, 0);
 			t = 0;
 			fr = 0;
 			flag = false;
-			/*cout<<"End of video reached...\n";
-			system("PAUSE");
-			break;*/
+			for(i=0;i<HEIGHT;i++)
+				for(j=0;j<WIDTH;j++)
+					SM.data[SM.cols*i+j] = 0;
 		}
-		/*circular index*/
+		else
+		{
+			frame = input(im_resize);
+			cvtColor(frame, gray_frame, CV_BGR2GRAY);
+			equalizeHist( gray_frame, tmp );
+			tmp.convertTo(curr, -1, 1, 0);
+		}
+		/*Circular index*/
 		t = (t+1)%N;
 		/*Reset Maps*/
 		for(i=0;i<patch_y;i++)
