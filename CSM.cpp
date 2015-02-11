@@ -163,35 +163,37 @@ float maxmag(int **Mx, int **My, int patchx, int patchy)
 
 int main( int argc, char** argv )
 {
-	String file_name = "birdfall2.avi";
+	//String file_name = "birdfall2.avi";
+	String file_name = "parachute.avi";
+	//String file_name = "girl.avi";
 	VideoCapture cap(file_name); // open the video (0 for webcam, string for a file)
 	Mat input, frame, prev, curr, gray_frame;
 	Mat fgmask,fgimg,bgimg,tmp,tmp1,canny_out,gradx,grady;
 	Mat SM;
 	//Rect im_resize = Rect(0,0,640,480); /*Cam*/
-	Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
-	//Rect im_resize = Rect(0,0,408,352); /*parachute*/
+	//Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
+	Rect im_resize = Rect(0,0,408,352); /*parachute*/
 	//Rect im_resize = Rect(0,0,400,320); /*girl*/
 	vector<float> descriptorsValues;
 	vector<Point> locations;
 	vector<vector<Point>> contours;
 	vector<Vec4i> hierarchy;
 	int t = 0,i,j,k,l,N=15,fr;	
-	int WIDTH, HEIGHT, cellsize = 8;
+	int WIDTH, HEIGHT, cellsize = 4;
 	int patch_x;
 	int patch_y;
 	int **MVx,**MVy;
 	bool flag = false;
-	double w = 1, SM_thresh = 0, ARPS_thresh = 16;
-	double p,k_e = 0.2;
+	double ARPS_thresh = 16, w = 0.3, SM_thresh = 0.26, cont_thresh = 256;
+	double p;
 	double ***M;
 	double ***theta;
 	double **C,**Ment,**Mcs,**Dent,**Dcs;
 	double s,MaxMag,MTemp,thetaTemp;
-	
 	namedWindow("CSM",CV_WINDOW_AUTOSIZE);
 	namedWindow("Current Frame",CV_WINDOW_AUTOSIZE);
 	namedWindow("Curr",CV_WINDOW_AUTOSIZE);
+
 	/*Read new frame*/
 	cap >> input;
 	/*Adjust image input*/
@@ -212,7 +214,7 @@ int main( int argc, char** argv )
 				// 0.2, //L2HysThresh,
 				// false //gamma correction,
 				// nlevels=64
-	/*-----------------------------------Instantiate variables according to frame dimensions ----------------------*/
+	/************************************Instantiate variables according to frame dimensions**********************************************/
 	WIDTH = frame.cols; 
 	HEIGHT = frame.rows; 
 	patch_x = WIDTH/cellsize; 
@@ -278,7 +280,7 @@ int main( int argc, char** argv )
 		}
 
 	SM = Mat::zeros(HEIGHT,WIDTH, CV_8UC1);
-	/*-----------------------------------Variables defination complete---------------------------------------*/
+	/***********************************************************START********************************************************************/
 	while(1)
 	{	
 		if(!flag)	
@@ -321,12 +323,10 @@ int main( int argc, char** argv )
 					s = 0;
 					for(k=0;k<9;k++)
 						s += descriptorsValues[(j * patch_y + i) * 9 + k];
-						//s += pow(eu,-(descriptorsValues[(j * patch_y + i) * 9 + k]/k_e));
 					if(s!=0)
 						for(k=0;k<9;k++)
 						{
 							p = descriptorsValues[(j * patch_y + i) * 9 + k]/s;
-							//p = pow(eu,-(descriptorsValues[(j * patch_y + i) * 9 + k]/k_e))/s;
 							if(p == 0)
 								continue;
 							else
@@ -337,12 +337,10 @@ int main( int argc, char** argv )
 					/*Motion Entropy Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<N-1;k++)
-						//s += pow(eu,-(M[i][j][k]/k_e));
 						s += M[i][j][k];
 					if(s!=0)
 						for(k=0;k<N-1;k++)
 						{
-							//p = (pow(eu,-(M[i][j][k]/k_e))/s);
 							p = M[i][j][k]/s;
 							if(p == 0)
 								continue;
@@ -366,12 +364,10 @@ int main( int argc, char** argv )
 					/*Direction Entropy Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<N-1;k++)
-						//s += pow(eu,-(theta[i][j][k]/k_e));
 						s += theta[i][j][k];
 					if(s!=0)
 						for(k=0;k<N-1;k++)
 						{
-							//p = (pow(eu,-(theta[i][j][k]/k_e))/s);
 							p = theta[i][j][k]/s;
 							if(p == 0)
 								continue;
@@ -393,7 +389,7 @@ int main( int argc, char** argv )
 					Dcs[i][j] = Dcs[i][j]/8;
 						
 					/*Final Spatio Temporal Saliency Map for block(i,j)*/
-					s = (w*(1-C[i][j])) + ((1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
+					s = (w*(C[i][j])) + ((1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
 					/*Zero Thresholding*/
 					if(s<SM_thresh)
 						s = 0;
@@ -405,11 +401,11 @@ int main( int argc, char** argv )
 		}/*End if*/	
 		
 		/*Find and draw contours*/
-		Canny(SM, canny_out, 0, 255, 3);//with or without, explained later.
+		Canny(SM, canny_out, 0, 255, 3);
 		findContours(canny_out, contours, hierarchy, CV_RETR_EXTERNAL, 2, Point(0,0));
 		for (vector<vector<Point> >::iterator it = contours.begin(); it!=contours.end(); )
 		{
-			if (it->size()<50)
+			if (it->size()<cont_thresh)
 				it=contours.erase(it);
 			else
 				++it;
@@ -424,6 +420,7 @@ int main( int argc, char** argv )
 		imshow("CSM",SM);
 		imshow("Current Frame",frame);
 		imshow("Curr",curr);
+
 		/*Swap current frame with the previous for next step*/
 		swap(prev, curr);
 		/*Read new frame*/
