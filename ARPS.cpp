@@ -111,11 +111,11 @@ void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, float thres)
 				POLS[1] = MVx[patch_y][patch_x];
 
 				/*Local search using pxp mask*/
-				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y+=p)
+				for(y=i+POLS[0]-p;y<=i+POLS[0]+p;y++)
 				{
 					if(minMAD<thres)
 						break;
-					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x+=p)
+					for(x=j+POLS[1]-p;x<=j+POLS[1]+p;x++)
 					{
 						if(x>=0 && x+blocksize<=WIDTH && y>=0 && y+blocksize<=HEIGHT)
 						{
@@ -196,22 +196,29 @@ Mat DrawGradients(int **My, int **Mx, int cellsize, Mat frame)
 
 int main( int argc, char** argv )
 {
-	VideoCapture cap; // open the video camera for reading (use a string for a file)
+	String file_name = "parachute.avi";
+	Rect im_resize = Rect(0,0,408,352); /*parachute*/
+	//Rect im_resize = Rect(0,0,256,320); /*birdfall*/
+	//Rect im_resize = Rect(0,0,640,480);
+	VideoCapture cap(file_name); // open the video camera for reading (use a string for a file)
 	Mat frame, gray_frame;
-	Mat prev,curr;
+	Mat prev,curr,tmp,tmp1;
 	Mat flow;
 	int t = 0,i,j,k;	
-	int WIDTH,HEIGHT,cellsize = 16;
+	int WIDTH,HEIGHT,cellsize = 8;
 	int patch_x;
 	int patch_y;
 	int **MVx,**MVy;
 
 	namedWindow("Optical Flow",1);
 
-	cap.open(0);
-
 	cap >> frame;
-
+	frame = frame(im_resize);
+	cvtColor(frame, gray_frame, CV_BGR2GRAY);
+	equalizeHist( gray_frame, tmp );
+	GaussianBlur(tmp,tmp1,Size(0,0),3);
+	addWeighted(tmp, 1.5, tmp1, -0.5, 0, curr);
+	
 	WIDTH = frame.cols; //640 on hp-pavillion webcam
 	HEIGHT = frame.rows; //480 on hp-pavillion webcam
 	patch_x = WIDTH/cellsize; //40 on hp-pavillion webcam
@@ -227,23 +234,32 @@ int main( int argc, char** argv )
 		
 	while(1)
     	{
-	
-		cap >> frame; // read a new frame from video			
-		
-		cvtColor(frame, gray_frame, CV_BGR2GRAY);
-
-		gray_frame.convertTo(curr, -1, 1.2, 0);
-		
+			
 		if(t > 0)
 		{
-			ARPS(prev, curr, 16, 3, MVx, MVy, 8);
-			flow = DrawGradients(MVy, MVx, 16, curr);
+			ARPS(prev, curr, cellsize, 5, MVx, MVy, 16);
+			flow = DrawGradients(MVy, MVx, cellsize, frame);
 			imshow("Optical Flow", flow);
 		}
 		
 		/*Swap current frame with the previous for next step*/
 		swap(prev, curr);
+
+		cap >> frame; // read a new frame from video			
+		if(frame.empty())
+		{
+			cap = VideoCapture(file_name);
+			cap >> frame;
+		}
+
+		frame = frame(im_resize);
+		cvtColor(frame, gray_frame, CV_BGR2GRAY);
+		equalizeHist( gray_frame, tmp );
+		GaussianBlur(tmp,tmp1,Size(0,0),3);
+		addWeighted(tmp, 1.5, tmp1, -0.5, 0, curr);
+
 		t = 1;
+
 		if(waitKey(10) == 27) //wait for 'esc' key press for 10 ms. If 'esc' key is pressed, break loop
 		{
 			system("PAUSE");
