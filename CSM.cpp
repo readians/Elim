@@ -435,10 +435,6 @@ int main( int argc, char** argv )
 		{
 			cap = VideoCapture(file_name);
 			cap >> input;
-			frame = input(im_resize);
-			cvtColor(frame, gray_frame, CV_BGR2GRAY);
-			equalizeHist( gray_frame, tmp );
-			tmp.convertTo(curr, -1, 1, 0);
 			t = 0;
 			fr = 0;
 			flag = false;
@@ -446,14 +442,14 @@ int main( int argc, char** argv )
 				for(j=0;j<WIDTH;j++)
 					SM.data[SM.cols*i+j] = 0;
 		}
-		else
-		{
-			frame = input(im_resize);
-			cvtColor(frame, gray_frame, CV_BGR2GRAY);
-			equalizeHist( gray_frame, tmp );
-			GaussianBlur(tmp,tmp1,Size(0,0),3);
-			addWeighted(tmp, 1.5, tmp1, -0.5, 0, curr);
-		}
+		
+		frame = input(im_resize);
+		cvtColor(frame, gray_frame, CV_BGR2GRAY);
+		equalizeHist( gray_frame, tmp );
+		GaussianBlur(tmp,tmp1,Size(0,0),3);
+		addWeighted(tmp, 1.5, tmp1, -0.5, 0, tmp);
+		tmp.convertTo(curr, -1, 1, 0);
+
 		/*Circular index*/
 		t = (t+1)%N;
 		/*Reset Maps*/
