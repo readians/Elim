@@ -184,7 +184,7 @@ int main( int argc, char** argv )
 	int patch_y;
 	int **MVx,**MVy;
 	bool flag = false;
-	double ARPS_thresh = 16, w = 1, SM_thresh = 0, cont_thresh = 128;
+	double ARPS_thresh = 16, w = 0.3, SM_thresh = 0.125, cont_thresh = 128;
 	double p;
 	double ***M;
 	double ***theta;
@@ -292,7 +292,7 @@ int main( int argc, char** argv )
 		/*Computing M and theta for each block of the frame with respect the previous frame t-1*/
 		if(t > 0 || flag == true)
 		{	
-			ARPS(prev, curr, cellsize, 6, MVx, MVy, ARPS_thresh);
+			ARPS(prev, curr, cellsize, 5, MVx, MVy, ARPS_thresh);
 			MaxMag = maxmag(MVx,MVy,patch_x,patch_y);
 			if(MaxMag==0)
 				MaxMag=1;
