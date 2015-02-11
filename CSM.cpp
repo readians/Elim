@@ -179,12 +179,12 @@ int main( int argc, char** argv )
 	vector<vector<Point>> contours;
 	vector<Vec4i> hierarchy;
 	int t = 0,i,j,k,l,N=15,fr;	
-	int WIDTH, HEIGHT, cellsize = 4;
+	int WIDTH, HEIGHT, cellsize = 8;
 	int patch_x;
 	int patch_y;
 	int **MVx,**MVy;
 	bool flag = false;
-	double ARPS_thresh = 16, w = 0.3, SM_thresh = 0.26, cont_thresh = 256;
+	double ARPS_thresh = 16, w = 1, SM_thresh = 0, cont_thresh = 128;
 	double p;
 	double ***M;
 	double ***theta;
@@ -200,7 +200,8 @@ int main( int argc, char** argv )
 	frame = input(im_resize);
 	cvtColor(frame, gray_frame, CV_BGR2GRAY);
 	equalizeHist( gray_frame, tmp );
-	tmp.convertTo(curr, -1, 1, 0);
+	GaussianBlur(tmp,tmp1,Size(0,0),3);
+	addWeighted(tmp, 1.5, tmp1, -0.5, 0, curr);
 	/*Set HOG descriptor*/
 	HOGDescriptor d(curr.size(),Size(cellsize,cellsize),Size(cellsize,cellsize),Size(cellsize,cellsize),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
 				// Size(640,480), //winSize
@@ -299,6 +300,12 @@ int main( int argc, char** argv )
 				for(j=0;j<patch_x;j++)
 				{
 					M[i][j][fr] = sqrt(pow(MVx[i][j],2.0)+pow(MVy[i][j],2.0))/MaxMag;
+					if(M[i][j][fr]<0.1)
+					{
+						M[i][j][fr] = 0;
+						theta[i][j][fr] = 0;
+						continue;
+					}
 					if(MVx[i][j] != 0 || MVy[i][j] != 0)	
 						theta[i][j][fr] = atan2(MVy[i][j],MVx[i][j]);
 					else
@@ -345,7 +352,7 @@ int main( int argc, char** argv )
 							if(p == 0)
 								continue;
 							else
-								Ment[i][j] += p*log10(p);
+								Ment[i][j] += p*(log10(p));
 						}
 					Ment[i][j] = -Ment[i][j];
 						
@@ -372,7 +379,7 @@ int main( int argc, char** argv )
 							if(p == 0)
 								continue;
 							else
-								Dent[i][j] += p*log10(p);
+								Dent[i][j] += p*(log10(p));
 						}
 					Dent[i][j] = -Dent[i][j];
 						
@@ -389,7 +396,7 @@ int main( int argc, char** argv )
 					Dcs[i][j] = Dcs[i][j]/8;
 						
 					/*Final Spatio Temporal Saliency Map for block(i,j)*/
-					s = (w*(C[i][j])) + ((1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
+					s = (w*(1-C[i][j])) + ((1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
 					/*Zero Thresholding*/
 					if(s<SM_thresh)
 						s = 0;
@@ -417,10 +424,9 @@ int main( int argc, char** argv )
 		}
 
 		/*Show result*/
-		imshow("CSM",SM);
 		imshow("Current Frame",frame);
 		imshow("Curr",curr);
-
+		imshow("CSM",SM);
 		/*Swap current frame with the previous for next step*/
 		swap(prev, curr);
 		/*Read new frame*/
@@ -445,7 +451,8 @@ int main( int argc, char** argv )
 			frame = input(im_resize);
 			cvtColor(frame, gray_frame, CV_BGR2GRAY);
 			equalizeHist( gray_frame, tmp );
-			tmp.convertTo(curr, -1, 1, 0);
+			GaussianBlur(tmp,tmp1,Size(0,0),3);
+			addWeighted(tmp, 1.5, tmp1, -0.5, 0, curr);
 		}
 		/*Circular index*/
 		t = (t+1)%N;
