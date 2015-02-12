@@ -18,29 +18,6 @@ using namespace std;
 #define PI 3.14159265359
 #define eu 2.7182818284
 
-Mat MyBGRtoGRAY(Mat in){
-
-	Mat out = Mat::zeros(in.rows,in.cols,CV_8UC1);
-	
-	int B,G,R;
-	
-	/*	channel 0 (B) = 0.114
-		channel 1 (G) = 0.587
-		channel 2 (R) = 0.299
-	*/
-	for(int i=0;i<in.rows;i++)
-		for(int j=0;j<in.cols;j++)
-		{
-			B = in.data[in.cols*i + j + 0];
-			G = in.data[in.cols*i + j + 1];
-			R = in.data[in.cols*i + j + 2];
-			
-			out.data[out.cols*i+j] = (uchar)(0.114*B +	0.587*G + 0.299*R);
-
-		}
-	return out;
-} 
-
 float costFunMAD(Mat curr, Mat ref, int n){
 	int i,j;
 	float err = 0;
@@ -189,7 +166,6 @@ int main(int argc, char** argv)
 {
 	String file_name = "birdfall2.avi";
 	//String file_name = "parachute.avi";
-	//String file_name = "girl.avi";
 	VideoCapture cap(file_name); // open the video (0 for webcam, string for a file)
 	Mat input, frame, prev, curr, gray_frame;
 	Mat mask,fgimg,bgimg,tmp,tmp1,canny_out,gradx,grady;
@@ -197,7 +173,6 @@ int main(int argc, char** argv)
 	//Rect im_resize = Rect(0,0,640,480); /*Cam*/
 	Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
 	//Rect im_resize = Rect(0,0,408,352); /*parachute*/
-	//Rect im_resize = Rect(0,0,400,320); /*girl*/
 	vector<float> descriptorsValues;
 	vector<Point> locations;
 	vector<vector<Point>> contours;
