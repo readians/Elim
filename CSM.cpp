@@ -18,6 +18,29 @@ using namespace std;
 #define PI 3.14159265359
 #define eu 2.7182818284
 
+Mat MyBGRtoGRAY(Mat in){
+
+	Mat out = Mat::zeros(in.rows,in.cols,CV_8UC1);
+	
+	int B,G,R;
+	
+	/*	channel 0 (B) = 0.114
+		channel 1 (G) = 0.587
+		channel 2 (R) = 0.299
+	*/
+	for(int i=0;i<in.rows;i++)
+		for(int j=0;j<in.cols;j++)
+		{
+			B = in.data[in.cols*i + j + 0];
+			G = in.data[in.cols*i + j + 1];
+			R = in.data[in.cols*i + j + 2];
+			
+			out.data[out.cols*i+j] = (uchar)(0.114*B +	0.587*G + 0.299*R);
+
+		}
+	return out;
+} 
+
 float costFunMAD(Mat curr, Mat ref, int n){
 	int i,j;
 	float err = 0;
@@ -62,6 +85,7 @@ void ARPS(Mat A, Mat B, int blocksize, int p, int **MVx, int **MVy, double thres
 			{
 				MVx[patch_y][patch_x] = 0;
 				MVy[patch_y][patch_x] = 0;
+				continue;
 			}
 			else
 			{
@@ -161,18 +185,18 @@ float maxmag(int **Mx, int **My, int patchx, int patchy)
 }
 
 
-int main( int argc, char** argv )
+int main(int argc, char** argv)
 {
-	//String file_name = "birdfall2.avi";
-	String file_name = "parachute.avi";
+	String file_name = "birdfall2.avi";
+	//String file_name = "parachute.avi";
 	//String file_name = "girl.avi";
 	VideoCapture cap(file_name); // open the video (0 for webcam, string for a file)
 	Mat input, frame, prev, curr, gray_frame;
-	Mat fgmask,fgimg,bgimg,tmp,tmp1,canny_out,gradx,grady;
-	Mat SM;
+	Mat mask,fgimg,bgimg,tmp,tmp1,canny_out,gradx,grady;
+	Mat SM,SMall;
 	//Rect im_resize = Rect(0,0,640,480); /*Cam*/
-	//Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
-	Rect im_resize = Rect(0,0,408,352); /*parachute*/
+	Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
+	//Rect im_resize = Rect(0,0,408,352); /*parachute*/
 	//Rect im_resize = Rect(0,0,400,320); /*girl*/
 	vector<float> descriptorsValues;
 	vector<Point> locations;
@@ -184,12 +208,12 @@ int main( int argc, char** argv )
 	int patch_y;
 	int **MVx,**MVy;
 	bool flag = false;
-	double ARPS_thresh = 16, w = 0.3, SM_thresh = 0.125, cont_thresh = 128;
+	double ARPS_thresh = 16, w = 0.3, SM_thresh = 0.3, cont_thresh = 25*64;
 	double p;
 	double ***M;
 	double ***theta;
 	double **C,**Ment,**Mcs,**Dent,**Dcs;
-	double s,MaxMag,MTemp,thetaTemp;
+	double s,MaxMag = 0,MTemp,thetaTemp,temp;
 	namedWindow("CSM",CV_WINDOW_AUTOSIZE);
 	namedWindow("Current Frame",CV_WINDOW_AUTOSIZE);
 	namedWindow("Curr",CV_WINDOW_AUTOSIZE);
@@ -198,10 +222,11 @@ int main( int argc, char** argv )
 	cap >> input;
 	/*Adjust image input*/
 	frame = input(im_resize);
-	cvtColor(frame, gray_frame, CV_BGR2GRAY);
-	equalizeHist( gray_frame, tmp );
-	GaussianBlur(tmp,tmp1,Size(0,0),3);
-	addWeighted(tmp, 1.5, tmp1, -0.5, 0, curr);
+	cvtColor(frame, gray_frame, CV_BGR2GRAY);	
+	equalizeHist(gray_frame, tmp);
+	//GaussianBlur(tmp,tmp1,Size(0,0),3);
+	//addWeighted(tmp, 1.5, tmp1, -0.5, 0, tmp);
+	tmp.convertTo(curr, -1, 1, 0);
 	/*Set HOG descriptor*/
 	HOGDescriptor d(curr.size(),Size(cellsize,cellsize),Size(cellsize,cellsize),Size(cellsize,cellsize),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
 				// Size(640,480), //winSize
@@ -281,6 +306,7 @@ int main( int argc, char** argv )
 		}
 
 	SM = Mat::zeros(HEIGHT,WIDTH, CV_8UC1);
+	SMall = Mat::zeros(HEIGHT/cellsize,WIDTH/cellsize, CV_8UC1);
 	/***********************************************************START********************************************************************/
 	while(1)
 	{	
@@ -294,13 +320,15 @@ int main( int argc, char** argv )
 		{	
 			ARPS(prev, curr, cellsize, 5, MVx, MVy, ARPS_thresh);
 			MaxMag = maxmag(MVx,MVy,patch_x,patch_y);
+			/*if(temp>MaxMag)
+				MaxMag=temp;*/
 			if(MaxMag==0)
 				MaxMag=1;
 			for(i=0;i<patch_y;i++)
 				for(j=0;j<patch_x;j++)
 				{
 					M[i][j][fr] = sqrt(pow(MVx[i][j],2.0)+pow(MVy[i][j],2.0))/MaxMag;
-					if(M[i][j][fr]<0.1)
+					if(M[i][j][fr]<0.25)
 					{
 						M[i][j][fr] = 0;
 						theta[i][j][fr] = 0;
@@ -340,7 +368,7 @@ int main( int argc, char** argv )
 								C[i][j] += p*(log10(p));
 						}
 					C[i][j] = -C[i][j];
-
+					
 					/*Motion Entropy Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<N-1;k++)
@@ -396,37 +424,36 @@ int main( int argc, char** argv )
 					Dcs[i][j] = Dcs[i][j]/8;
 						
 					/*Final Spatio Temporal Saliency Map for block(i,j)*/
-					s = (w*(1-C[i][j])) + ((1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
+					s = (w*(C[i][j])) + ((1-w)*((Ment[i][j]*Mcs[i][j])+((1-Dent[i][j])*Dcs[i][j])));
 					/*Zero Thresholding*/
 					if(s<SM_thresh)
 						s = 0;
 					for(k=i*cellsize;k<(i*cellsize)+cellsize;k++)
 						for(l=j*cellsize;l<(j*cellsize)+cellsize;l++)
-							SM.data[SM.cols*k+l] = (uchar)(s*255); 
+							SM.data[SM.cols*k+l] = (uchar)(s*255);
+					SMall.data[SMall.cols*i+j] = (uchar)(s*255);
 				}
 			}
 		}/*End if*/	
 		
+		/*Close*/
+		dilate(SM, tmp, Mat(),Point(-1,-1),7,0);
+		erode(tmp, SM, Mat(),Point(-1,-1),7,0);
 		/*Find and draw contours*/
 		Canny(SM, canny_out, 0, 255, 3);
 		findContours(canny_out, contours, hierarchy, CV_RETR_EXTERNAL, 2, Point(0,0));
-		for (vector<vector<Point> >::iterator it = contours.begin(); it!=contours.end(); )
-		{
-			if (it->size()<cont_thresh)
-				it=contours.erase(it);
-			else
-				++it;
-		}
-		for(i = 0; i<contours.size(); i++ )
+		for(i=0; i<contours.size(); i++)
 		{
 			Scalar color = Scalar(0, 255, 0);
-			drawContours(frame, contours, i, color, 2, 8, hierarchy, 0, Point());
+			if(contourArea(contours[i])>=cont_thresh)
+				drawContours(frame, contours, i, color, 2, 8, hierarchy, 0, Point());
 		}
 
 		/*Show result*/
 		imshow("Current Frame",frame);
 		imshow("Curr",curr);
 		imshow("CSM",SM);
+
 		/*Swap current frame with the previous for next step*/
 		swap(prev, curr);
 		/*Read new frame*/
@@ -435,9 +462,10 @@ int main( int argc, char** argv )
 		{
 			cap = VideoCapture(file_name);
 			cap >> input;
-			t = 0;
+			t = -1;
 			fr = 0;
 			flag = false;
+			MaxMag = 0;
 			for(i=0;i<HEIGHT;i++)
 				for(j=0;j<WIDTH;j++)
 					SM.data[SM.cols*i+j] = 0;
@@ -445,10 +473,8 @@ int main( int argc, char** argv )
 		
 		frame = input(im_resize);
 		cvtColor(frame, gray_frame, CV_BGR2GRAY);
-		equalizeHist( gray_frame, tmp );
-		GaussianBlur(tmp,tmp1,Size(0,0),3);
-		addWeighted(tmp, 1.5, tmp1, -0.5, 0, tmp);
-		tmp.convertTo(curr, -1, 1, 0);
+		equalizeHist(gray_frame, tmp);
+		tmp.convertTo(curr, -1, 0.7, 8);
 
 		/*Circular index*/
 		t = (t+1)%N;
