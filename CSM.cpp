@@ -16,7 +16,6 @@ using namespace cv;
 using namespace std;
 
 #define PI 3.14159265359
-#define eu 2.7182818284
 
 float costFunMAD(Mat curr, Mat ref, int n){
 	int i,j;
@@ -164,15 +163,15 @@ float maxmag(int **Mx, int **My, int patchx, int patchy)
 
 int main(int argc, char** argv)
 {
-	String file_name = "birdfall2.avi";
-	//String file_name = "parachute.avi";
+	//String file_name = "birdfall2.avi";
+	String file_name = "parachute.avi";
 	VideoCapture cap(file_name); // open the video (0 for webcam, string for a file)
 	Mat input, frame, prev, curr, gray_frame;
-	Mat mask,fgimg,bgimg,tmp,tmp1,canny_out,gradx,grady;
-	Mat SM,SMall;
+	Mat tmp,tmp1,canny_out;
+	Mat SM;
 	//Rect im_resize = Rect(0,0,640,480); /*Cam*/
-	Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
-	//Rect im_resize = Rect(0,0,408,352); /*parachute*/
+	//Rect im_resize = Rect(0,0,256,320); /*birdfall2*/
+	Rect im_resize = Rect(0,0,408,352); /*parachute*/
 	vector<float> descriptorsValues;
 	vector<Point> locations;
 	vector<vector<Point>> contours;
@@ -183,7 +182,7 @@ int main(int argc, char** argv)
 	int patch_y;
 	int **MVx,**MVy;
 	bool flag = false;
-	double ARPS_thresh = 16, w = 0.3, SM_thresh = 0.3, cont_thresh = 25*64;
+	double ARPS_thresh = 16, w = 0.3, SM_thresh = 0.3, cont_thresh = 32*64;
 	double p;
 	double ***M;
 	double ***theta;
@@ -199,9 +198,7 @@ int main(int argc, char** argv)
 	frame = input(im_resize);
 	cvtColor(frame, gray_frame, CV_BGR2GRAY);	
 	equalizeHist(gray_frame, tmp);
-	//GaussianBlur(tmp,tmp1,Size(0,0),3);
-	//addWeighted(tmp, 1.5, tmp1, -0.5, 0, tmp);
-	tmp.convertTo(curr, -1, 1, 0);
+	tmp.convertTo(curr, -1, 0.7, 0);
 	/*Set HOG descriptor*/
 	HOGDescriptor d(curr.size(),Size(cellsize,cellsize),Size(cellsize,cellsize),Size(cellsize,cellsize),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
 				// Size(640,480), //winSize
@@ -281,7 +278,6 @@ int main(int argc, char** argv)
 		}
 
 	SM = Mat::zeros(HEIGHT,WIDTH, CV_8UC1);
-	SMall = Mat::zeros(HEIGHT/cellsize,WIDTH/cellsize, CV_8UC1);
 	/***********************************************************START********************************************************************/
 	while(1)
 	{	
@@ -295,8 +291,6 @@ int main(int argc, char** argv)
 		{	
 			ARPS(prev, curr, cellsize, 5, MVx, MVy, ARPS_thresh);
 			MaxMag = maxmag(MVx,MVy,patch_x,patch_y);
-			/*if(temp>MaxMag)
-				MaxMag=temp;*/
 			if(MaxMag==0)
 				MaxMag=1;
 			for(i=0;i<patch_y;i++)
@@ -343,6 +337,8 @@ int main(int argc, char** argv)
 								C[i][j] += p*(log10(p));
 						}
 					C[i][j] = -C[i][j];
+					if(C[i][j]<0.65)
+						C[i][j] *= 0.5 ;
 					
 					/*Motion Entropy Map for block(i,j)*/
 					s = 0;
@@ -406,7 +402,6 @@ int main(int argc, char** argv)
 					for(k=i*cellsize;k<(i*cellsize)+cellsize;k++)
 						for(l=j*cellsize;l<(j*cellsize)+cellsize;l++)
 							SM.data[SM.cols*k+l] = (uchar)(s*255);
-					SMall.data[SMall.cols*i+j] = (uchar)(s*255);
 				}
 			}
 		}/*End if*/	
