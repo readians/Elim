@@ -16,6 +16,7 @@ using namespace cv;
 using namespace std;
 
 #define PI 3.14159265359
+#define NEP 2.718281
 
 float costFunMAD(Mat curr, Mat ref, int n){
 	int i,j;
@@ -190,15 +191,14 @@ int main(int argc, char** argv)
 	double s,MaxMag = 0,MTemp,thetaTemp,temp;
 	namedWindow("CSM",CV_WINDOW_AUTOSIZE);
 	namedWindow("Current Frame",CV_WINDOW_AUTOSIZE);
-	namedWindow("Curr",CV_WINDOW_AUTOSIZE);
 
 	/*Read new frame*/
 	cap >> input;
 	/*Adjust image input*/
 	frame = input(im_resize);
-	cvtColor(frame, gray_frame, CV_BGR2GRAY);	
-	equalizeHist(gray_frame, tmp);
-	tmp.convertTo(curr, -1, 0.7, 0);
+	cvtColor(frame, curr, CV_BGR2GRAY);	
+	//equalizeHist(gray_frame, tmp);
+	//tmp.convertTo(curr, -1, 0.7, 0);
 	/*Set HOG descriptor*/
 	HOGDescriptor d(curr.size(),Size(cellsize,cellsize),Size(cellsize,cellsize),Size(cellsize,cellsize),9,0,-1,HOGDescriptor::L2Hys, 0.2, false, HOGDescriptor::DEFAULT_NLEVELS);
 				// Size(640,480), //winSize
@@ -221,7 +221,7 @@ int main(int argc, char** argv)
 	C = new double*[patch_y];
 	for(i = 0; i < patch_y; ++i)
 		C[i] = new double[patch_x];
-	
+
 	Ment = new double*[patch_y];
 	for(i = 0; i < patch_y; ++i)
 		Ment[i] = new double[patch_x];
@@ -326,28 +326,26 @@ int main(int argc, char** argv)
 					/*Spatial Coherency Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<9;k++)
-						s += descriptorsValues[(j * patch_y + i) * 9 + k];
+						s += pow(NEP,-(descriptorsValues[(j * patch_y + i) * 9 + k]/0.899));
 					if(s!=0)
 						for(k=0;k<9;k++)
 						{
-							p = descriptorsValues[(j * patch_y + i) * 9 + k]/s;
+							p = pow(NEP,-(descriptorsValues[(j * patch_y + i) * 9 + k]/0.899));
 							if(p == 0)
 								continue;
 							else
 								C[i][j] += p*(log10(p));
 						}
 					C[i][j] = -C[i][j];
-					if(C[i][j]<0.65)
-						C[i][j] *= 0.5 ;
 					
 					/*Motion Entropy Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<N-1;k++)
-						s += M[i][j][k];
+						s += pow(NEP,-(M[i][j][k]/0.899));
 					if(s!=0)
 						for(k=0;k<N-1;k++)
 						{
-							p = M[i][j][k]/s;
+							p = pow(NEP,-(M[i][j][k]/0.899))/s;
 							if(p == 0)
 								continue;
 							else
@@ -370,11 +368,11 @@ int main(int argc, char** argv)
 					/*Direction Entropy Map for block(i,j)*/
 					s = 0;
 					for(k=0;k<N-1;k++)
-						s += theta[i][j][k];
+						s += pow(NEP,-(theta[i][j][k]/0.899));
 					if(s!=0)
 						for(k=0;k<N-1;k++)
 						{
-							p = theta[i][j][k]/s;
+							p = pow(NEP,-(theta[i][j][k]/0.899))/s;
 							if(p == 0)
 								continue;
 							else
@@ -407,8 +405,8 @@ int main(int argc, char** argv)
 		}/*End if*/	
 		
 		/*Close*/
-		dilate(SM, tmp, Mat(),Point(-1,-1),7,0);
-		erode(tmp, SM, Mat(),Point(-1,-1),7,0);
+		dilate(SM, tmp, Mat(),Point(-1,-1),5,0);
+		erode(tmp, SM, Mat(),Point(-1,-1),5,0);
 		/*Find and draw contours*/
 		Canny(SM, canny_out, 0, 255, 3);
 		findContours(canny_out, contours, hierarchy, CV_RETR_EXTERNAL, 2, Point(0,0));
@@ -421,9 +419,7 @@ int main(int argc, char** argv)
 
 		/*Show result*/
 		imshow("Current Frame",frame);
-		imshow("Curr",curr);
 		imshow("CSM",SM);
-
 		/*Swap current frame with the previous for next step*/
 		swap(prev, curr);
 		/*Read new frame*/
