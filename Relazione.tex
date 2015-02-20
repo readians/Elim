@@ -1,0 +1,72 @@
+\documentclass[12pt,oneside]{IEEEtran}
+\usepackage[latin1]{inputenc}
+\usepackage{graphicx}
+\usepackage{subfig}
+\renewcommand{\abstractname}{Abstract}
+
+\begin{document}
+	\title{Mappa Di Coerenza Spazio-Temporale Per La Segmentazione Di Immagini Da Video}
+	\author{Rea Domenico Università Degli Studi di Napoli Parthenope 0124000608}
+	\date{February 2015}
+	\maketitle
+	\begin{abstract}
+	Estrarre oggetti in movimento e salienti da video e immagini è importante per molte applicazione di sorveglianza e video-retargeting. In questo articolo useremo informazioni di coerenza spaziale e temporale per la segmentazione di oggetti da video. Mentre alcuni metodi usano le informazioni di movimento, essi non tengono conto di quelle di coerenza che potenzialmente possono portare a mappe di salienza migliori. La coerenza spaziale identifica regioni che appartengono a uno oggetto, mentre la coerenza temporale identifica oggetti in movimento con una bassa entropia, e quindi con movimento coerente. Le due mappe sono combinate per ottenere la mappa di coerenza spazio-temporale.
+	L'implementazione dell'algoritmo proposto si basa sull'idea di:\newline
+	D.Mahaptra (ETH Zurich)\newline
+	S. Gilani (National University of Science and Technology)\newline
+	M.K. Saini (University of Ottawa).
+	\end{abstract}
+	\section{INTRODUZIONE}
+		Il sistema visivo umano è capace di distinguere gli oggetti salienti da quelli in movimento incoerente. Registrando il movimento degli occhi di alcuni osservatori muniti di eye-trackers si è riusciti a capire perchè le persone si focalizzano su alcuni oggetti di scena. Ci sono tuttora ricerche sul sviluppare modelli computazionali che imitino l'occhio umano. In alcuni metodi si usano informazioni di alto livello quali il cielo, le facce e gli umani sono usati come indicatori per identificare regioni salienti. Tuttavia informazioni del genere sono spesso scarse e non possono essere usate. Quindi molti metodi bottom-up usano informazioni di basso livello per risalire agli oggetti salienti. l'approccio generale è quello di ottenere una mappa che evidenzi gli oggetti ''interessanti'' e sopprima quelli che non lo sono. le mappe di salienza sono usate in diversi ambiti quali la videosorveglianza e la segmentazione di immagini mediche. Molte di esse non sopprimono regioni di scarso interesse o i falsi positivi.\newline
+		L'introduzione del video porta con se informazioni addizionali per minimizzare i falsi positivi.
+		Rispetto ai metodi per immagini statiche ci sono meno metodi per la creazione di mappe salienti e alcuni di questi hanno un costo computazionale elevato.
+	\section{METODO USATO}
+		La figura 1 mostra i differenti passi del metodo proposto. Una mappa di coerenza spaziale è calcolata per il frame corrente. Negli n=14 frames precedenti calcoliamo la motion entropy map, la motion center surround map, la direction entropy map e la direction center surround map. La combinazione di queste da la mappa di coerenza temporale; la quale, opportunamente combinata con la mappa di coerenza spaziale fornisce la mappa di coerenza spazio-temporale.\newline
+		Alcuni approcci eseguono operazioni sia su mappe statiche chee dinamiche, il che non è una buona idea nei video. Infatti un oggetto fermo potrebbe essere saliente in termini di coerenza spaziale ma irrilevante per mancanza di movimento. La figura 2(a)(b) sono frame di video che evidenziano oggetti statici nei box rossi,quindi non elaboreremo mappe di salienza statiche ma incorporeremo le informazioni di coerenza spaziale per rilevare regioni salienti. La figura 2(c) illustra invece un oggetto saliente in movimento nella green box mentre una regione non in movimento è inclusa nella red box. Sebbene gli esempi visti mostrano che l'elaborazione di oggetti statici può essere evitata, non possiamo scartare del tutto le features di basso livello poichè contribuiscono a migliorare l'identificazione di regioni salienti.\newline
+		Gli oggetti corrispondenti a regioni salienti sono segmentate usando l'algoritmo di Canny e successivamente con l'analisi delle componenti connesse. Un oggetto saliente in scene dinamiche:\newline
+		1) È parte di un oggetto ben definito\newline
+		2) È in foreground\newline
+		3) Ha movimento coerente\newline
+		4) Ha un motion profile differente da altri oggetti vicini\newline
+		Un immagine di input è divisa in patch non-overlapped per ottenere sottoregioni compatte. Questo ha due vantaggi: 1) i costi computazionali si riducono siccome non dobbiamo processare ogni pixel; 2) features più accurate sono ottenute se confrontate con quelle su singoli pixel.
+		La coerenza spaziale determina le parti di un oggetto. I motion vectors sono calcolati per ogni patch rispetto al frame precedente. Le informazioni di movimento (direzione e magnitudo) sono salvate per un periodo di tempo (15 frames) e analizzate per la coerenza temporale. La mappa di salienza finale identifica regioni che appartengono a un oggetto ben definito e che hanno movimento coerente.
+
+		\begin{figure}[h]
+		\caption{Illustrazione del metodo proposto}
+		\begin{center}
+		\includegraphics[width=9cm]{img/method}
+		\end{center}
+		\end{figure}
+		
+		\begin{figure}[h]
+		\caption{Esempi di falsi positivi (in rosso)}
+		\begin{center}
+		\subfloat[]{\includegraphics[width=2.7cm]{img/fig2a}}
+		\hspace*{.2cm}
+		\subfloat[]{\includegraphics[width=2.7cm]{img/fig2b}}
+		\hspace*{.2cm}
+		\subfloat[]{\includegraphics[width=2.7cm]{img/fig2c}}		
+		\end{center}
+		\end{figure}
+		
+		\subsection{Coerenza Spaziale}
+			Le mappe di coerenza spaziale identificano pixel che sono parte di un oggetto. L'istogramma dei gradienti (HoG) di una patch e la sua entropia sono calcolati a partire dall'intensità di un pixel. Sebbene le immagini a colori forniscano informazioni sul colore, ci concentreremo solo sull'Hog basato su intensità (gray-level). L'entropia dell'Hog identifica patch che fanno parte di un oggetto mentre l'analisi dei colori porta overhead senza un significativo guadagno in termini di precisione nelle mappe di salienza.\newline
+			L'istogramma dei gradienti è calcolato per ciascuna patch, ciascun istogramma è diviso in 9 bins (intervalli) che rappresentano 9 possibili orientazioni del gradiente stesso. Ogni bin contiene la somma dei magnitudo di una delle 9 orientazioni. L'istogramma è poi normalizzato secondo la Norma L2 per ottenere valori nei bins compresi tra 0 e 1.
+			Viene poi applicata una sogliatura per scartare valori più bassi nei bins.\newline
+			Un oggetto di scena ha un equa distribuzione del gradiente sulle patch che lo compongono, ovvero ha livelli di intensità pressochè omogenei.	Se denotiamo il frame di interesse con $I_{t}$, la coerenza spaziale C per un patch s è data da:\newline
+			\begin{equation}
+			C(s) = -\sum_{\theta}p(\theta)\log p(\theta)
+			\end{equation}
+			Dove $p(\theta)$ è la probabilità del gradiente di angolo $\theta$. È calcolata usando la misura di distribuzione di Boltzmann:
+			\begin{equation}
+			p(\theta)= \frac{e^{-m/k}}{\sum_{m}e^{-m/k}}
+			\end{equation}
+			Dove m è il valore di ciascun bin della patch s e k è una costante arbitraria.
+		\subsection{Coerenza Temporale}
+			Le mappe di coerenza temporale identificano regioni con movimento coerente nel tempo. Gli oggetti di interesse mstranoun pattern di movimento che è differente dal movimento casuale (per esempio l'ondulamento dei rami nel background dovouto al vento). L'informazione di movimento dai video può essere catturata in diversi modi quali la differenza assoluta tra frames consecutivi e l'optical flow. In questo metodo usiamo i motion vectors. I motion vectors possono essere calcolati velocemente, senza l'analisi di ciascun pixel come nell'optical flow, risparmiando tempo e risorse. Dal momento che i motion vectors sono calcolati per i blocchi, otteniamo regioni che contengono l'intero oggetto più le aree dei blocchi non coperte dall'oggetto.\newline
+			I motion vectors sono usati per i block matching negli algoritmi di compressione. I blocchi (patch) del frame corrente sono confrontati con il blocco corrispondente e i blocchi vicini nel frame precedente tramite una funzione di costo. Il risultato nei motion vectors indica lo scostamento di quel blocco tra il frame precedente e il corrente. La funzione di costo utilizzata è la MAD (Mean of Absolute Difference), che ha un costo computazionale ridotto trispetto ad altre funzioni. La funzione MAD tra due blocchi i e j è definita come segue:
+			\begin{equation}
+			MAD(i,j) = \frac{1}{N^{2}}\sum_{n_{1}=0}^{N-1}\sum_{n_{2}=0}^{N-1} |I_{t}(n_{1},n_{2})-I_{t-1}(n_{1}+i,n_{2}+j)|
+			\end{equation}
+			Dove N è la dimensione del blocco; i e j sono le coordinate del primo pixel (in alto a sinistra) del blocco di riferimento.
+\end{document}
