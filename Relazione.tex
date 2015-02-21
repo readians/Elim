@@ -2,6 +2,7 @@
 \usepackage[latin1]{inputenc}
 \usepackage{graphicx}
 \usepackage{subfig}
+\usepackage{amsmath}
 \renewcommand{\abstractname}{Abstract}
 
 \begin{document}
@@ -37,7 +38,6 @@
 		\includegraphics[width=9cm]{img/method}
 		\end{center}
 		\end{figure}
-		
 		\begin{figure}[h]
 		\caption{Esempi di falsi positivi (in rosso)}
 		\begin{center}
@@ -57,16 +57,64 @@
 			\begin{equation}
 			C(s) = -\sum_{\theta}p(\theta)\log p(\theta)
 			\end{equation}
-			Dove $p(\theta)$ è la probabilità del gradiente di angolo $\theta$. È calcolata usando la misura di distribuzione di Boltzmann:
+			Dove $p(\theta)$ è la probabilità del gradiente di angolo $\theta$ ed è calcolata usando la misura di distribuzione di Boltzmann:
 			\begin{equation}
-			p(\theta)= \frac{e^{-m/k}}{\sum_{m}e^{-m/k}}
+			p(\theta)= \frac{e^{-m(i)/k}}{\sum_{i=1}^{9}e^{-m(i)/k}}
 			\end{equation}
-			Dove m è il valore di ciascun bin della patch s e k è una costante arbitraria.
+			Dove $m(i)$ è il valore dell'i-esimo bin della patch s e k è una costante arbitraria.
 		\subsection{Coerenza Temporale}
 			Le mappe di coerenza temporale identificano regioni con movimento coerente nel tempo. Gli oggetti di interesse mstranoun pattern di movimento che è differente dal movimento casuale (per esempio l'ondulamento dei rami nel background dovouto al vento). L'informazione di movimento dai video può essere catturata in diversi modi quali la differenza assoluta tra frames consecutivi e l'optical flow. In questo metodo usiamo i motion vectors. I motion vectors possono essere calcolati velocemente, senza l'analisi di ciascun pixel come nell'optical flow, risparmiando tempo e risorse. Dal momento che i motion vectors sono calcolati per i blocchi, otteniamo regioni che contengono l'intero oggetto più le aree dei blocchi non coperte dall'oggetto.\newline
 			I motion vectors sono usati per i block matching negli algoritmi di compressione. I blocchi (patch) del frame corrente sono confrontati con il blocco corrispondente e i blocchi vicini nel frame precedente tramite una funzione di costo. Il risultato nei motion vectors indica lo scostamento di quel blocco tra il frame precedente e il corrente. La funzione di costo utilizzata è la MAD (Mean of Absolute Difference), che ha un costo computazionale ridotto trispetto ad altre funzioni. La funzione MAD tra due blocchi i e j è definita come segue:
 			\begin{equation}
 			MAD(i,j) = \frac{1}{N^{2}}\sum_{n_{1}=0}^{N-1}\sum_{n_{2}=0}^{N-1} |I_{t}(n_{1},n_{2})-I_{t-1}(n_{1}+i,n_{2}+j)|
 			\end{equation}
-			Dove N è la dimensione del blocco; i e j sono le coordinate del primo pixel (in alto a sinistra) del blocco di riferimento.
+			Dove N è la dimensione del blocco; i e j sono le coordinate del primo pixel (in alto a sinistra) del blocco di riferimento. L'algoritmo per calcolare i motion vectors utilizzato è l'ARPS (Adaprive Rood Pattern Search). L'algoritmo ARPS si basa sul fatto che il movimento tra blocchi vicini è coerente, cioè se i blocchi intorno a quello di riferimento si spostano in una certa direzione allora c'è una buona probabilità che anche il blocco di riferimento si sposti in quella direzione. Nella versione base dell'ARPS i movimenti dei blocchi considerati sono quelli rilevati alla sua immediata sinistra.\newline
+			Prima di iniziare a calcolare gli scostamenti il blocco viene confrontato con il medesimo blocco nel frame precedente per evitare di calcolare scostamenti nulli. 
+			Nel primo passo dell'algoritmo viene settata una finestra di ricerca (ARP) per ciascun blocco in base al massimo movimento rilevato per quello alla sua sinistra, in entrambe le direzioni X e Y. Cioè:
+			\begin{equation}
+			ARP = max{|MV_{predicted}(x)|,|MV_{predicted}(y)|}
+			\end{equation}
+			Dove $MV_{predicted}(x)$ e $MV_{predicted}(y)$ sono rispettivamente i movimenti rilevati del blocco a sinistra, in pixel, in entrambi gli assi. Se il blocco in esame è quello più a sinistra si setta una finestra di ricerca fissa (Nel nostro caso ARP = 2). Di tutte le possibili posizioni della finestra ne vengono scelte 4 più un quinto punto che rappresenta proprio lo scostamento del blocco a sinistra. I 4 punti scelti sono i margini della finestra orizzontali e verticali nei quali, come mostra la figura 3, viene calcolata la MAD e salvato il punto dove la MAD ritorna il minimo valore.\newline
+			Nel secondo passo dell'algoritmo viene calcolata la MAD in una seconda finestra di ricerca di dimensione arbitraria intorno al punto di minimo trovato in precedenza in cui viene applicata una full-search. Per questo motivo si sconsiglia di utilizzare una finestra superiore ai 7px.
+			\begin{figure}[h]
+			\caption{Scelta dei punti iniziali usati dalla MAD}
+			\begin{center}
+			\includegraphics[width=6cm]{img/ARP}
+			\end{center}
+			\end{figure}
+			I motion vectors di $I_t$ hanno 2 componenti $M_x,M_y$ che indicano lo scostamento di un blocco rispetto al frame precedente nelle direzioni x e y. Calcoliamo magnitudo e $M$ e direzione $\theta_M$ come segue:\newline
+			\begin{equation}
+			\begin{aligned}
+				M = \frac{\sqrt{M_x^2+M_y^2}}{MaxMag} \\
+				\theta = arctan \frac{M_y}{M_x}
+			\end{aligned}
+			\end{equation}
+			MaxMag è il massimo magnitudo rilevato nell'intero frame, così M è normalizzato nel range [0,1]. $\theta_M$ è calcolato usando la funzione del C++ atan2 che restituisce valori nell'intervallo [-$\pi$,$\pi$] radianti. Successivamente una traslazione dei valori negativi è effettuata per avere solo valori positivi. Infine ciascun $\theta_M$ è diviso per $2\pi$; così anche i $\theta_M$ sono normalizzati nell'intervallo [0,1].\newline
+			Le mappe di coerenza temporale hanno due componenti: 1) coerenza di movimento e 2) coerenza di direzione. $M$ e $\theta_M$ sono calcolati per il frame $I_t$ rispetto al frame $I_{t-1}$ ma sono salvati per N-1 frame precedenti, dopo 15 frames calcoliamo i quattro valori utili a costruire le mappe di salienza temporale. Il primo di questi è la motion entropy definito come:
+			\begin{equation}
+			M_{ent}(s) = -\sum_{i=1}^{N-1}p_{M_i}\log p_{M_i}
+			\end{equation}
+			Dove $p_{M_i}$ è la probabilità del magnitudo i-esimo (su N-1 frames) ed è calcolata usando le informazioni di N frames e la distribuzione di Boltzmann come in precedenza.\newline
+			Nei nostri esperimenti N = 15 che corrisponde a poco più di mezzo secondo se si analizzano video a 25fps (standard per molte telecamere).\newline
+			La $M_{ent}$ contiene valori più alti per patch che si muovono molto. Il secondo valore rappresenta la differenza di magnitudo tra la patch $s$ e i suoi vicini. Questo concetto è chiamato center-surround map. Le regioni salienti sono quelle le cui features sono differenti da quelle che gli stanno intorno. Quindi la differenza media di magnitudo tra un blocco $s$ e i suoi vicini $N_s$ è:
+			\begin{equation}
+			M_{CS}(s) = \frac{1}{Z} \sum_{i=1}^{N_s}|M_s-M_i|
+			\end{equation}
+			dove $Z = 8$ è l'insieme 8-connesso di s. Per i bordi dell'immagine è stato usato lo Zero Padding.\newline
+			Abbiamo adesso 2 mappe, $M_{ent}$ e $M_{CS}$, le quali evidenziano rispettivamente zone con elevato movimento e differente da i suoi vicini.\newline
+			Un set di mappe simile si ottiene elaborando i $\theta_M$:
+			\begin{equation}
+			\begin{aligned}
+				\theta_{ent}(s) = -\sum_{i=1}^{N-1}p_{\theta_i}\log p_{\theta_i} \\
+				\theta_{CS}(s) = \frac{1}{Z} \sum_{i=1}^{N_s}|\theta_s-\theta_i|
+			\end{aligned}
+			\end{equation}
+			Queste 2 mappe evidenziano blocchi con direzione di movimento variabile e diversa dai suoi vicini. Valori più alti di $\theta_{ent}$ indicano oggetti che hanno movimento quasi casuale, il che indica movimento incoerente. Valori alti di $\theta_{CS}$ indicano che il blocco ha una traiettoria diversa da quella dei suoi vicini, il che è un buon segno per identificare oggetti salienti.
+		\subsection{Combinazione Delle Mappe}
+			Le regioni salienti nella mappa finale: 1) sono parte di un oggetto; 2) hanno un movimento significativo più alto dei loro vicini; 3) Hanno una traiettoria coerente. Con le considerazioni appena fatte calcoliamo la mappa di coerenza spazio-temporale per una patch $s$:
+			\begin{equation}
+			SM = w(C)+(1-w)[M_{ent} \times M_{CS}+(1-\theta_{ent})\times\theta_{CS}]
+			\end{equation}
+			la quale fornise regioni in saliente movimento. $w = 0.3$ determina il contributo tra la coerenza spaziale e temporale. $C$ mostra valori alti per le patch che appartengono a un oggetto omogeneo. $M_{ent} \times M_{CS}$ dà una mappa che evidenzia regioni con magnitudo di movimento elevato e differente dai vicini. $(1-\theta_{ent})\times\theta_{CS}$ dà una mappa con regolare direzione di movimento e differente dai vicini. Tutte le mappe sono normalizzate nel range [0,1] prima di calcolare la mappa di salienza finale.
+		\subsection{Segmentazione Degli Oggetti Salienti} 
 \end{document}
