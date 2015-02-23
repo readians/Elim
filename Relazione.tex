@@ -1,8 +1,11 @@
-\documentclass[12pt,oneside]{IEEEtran}
+\documentclass[12pt,twocolumn]{IEEEtran}
+\usepackage{microtype}
+\usepackage{lipsum}
 \usepackage[latin1]{inputenc}
 \usepackage{graphicx}
 \usepackage{subfig}
 \usepackage{amsmath}
+\usepackage{multicol}
 \renewcommand{\abstractname}{Abstract}
 
 \begin{document}
@@ -115,6 +118,56 @@
 			\begin{equation}
 			SM = w(C)+(1-w)[M_{ent} \times M_{CS}+(1-\theta_{ent})\times\theta_{CS}]
 			\end{equation}
-			la quale fornise regioni in saliente movimento. $w = 0.3$ determina il contributo tra la coerenza spaziale e temporale. $C$ mostra valori alti per le patch che appartengono a un oggetto omogeneo. $M_{ent} \times M_{CS}$ dà una mappa che evidenzia regioni con magnitudo di movimento elevato e differente dai vicini. $(1-\theta_{ent})\times\theta_{CS}$ dà una mappa con regolare direzione di movimento e differente dai vicini. Tutte le mappe sono normalizzate nel range [0,1] prima di calcolare la mappa di salienza finale.
-		\subsection{Segmentazione Degli Oggetti Salienti} 
+			la quale fornise regioni in saliente movimento. $w = 0.3$ determina il contributo tra la coerenza spaziale e temporale. $C$ mostra valori alti per le patch che appartengono a un oggetto omogeneo. $M_{ent} \times M_{CS}$ dà una mappa che evidenzia regioni con magnitudo di movimento elevato e differente dai vicini. $(1-\theta_{ent})\times\theta_{CS}$ dà una mappa con regolare direzione di movimento e differente dai vicini. Tutte le mappe sono normalizzate nel range [0,1] prima di calcolare la mappa di salienza finale.\newline
+			Per questioni di visibilità non è stata creata una mappa che abbia un punto per ogni patch ma una delle stesse dimensioni del frame in cui ciascun blocco contiene il valore della SM di quel blocco in tutti pixel del blocco stesso.
+		\subsection{Segmentazione Degli Oggetti Salienti}
+			valori positivi nella SM indicano regioni salienti, più alti sono i valori e più evidente è la salienza. Prima viene applicata una sogliatura a zero con un valore di soglia arbitrario (0.3 sembra essere il migliore valore), poi viene effettuata un operazione di chiusura sulla SM per coprire piccoli buchi e rendere visivamente migliore il risultato, infine l'algoritmo di Canny è applicato e un operatore traccia sul frame i contorni le cui aree che racchiudono siano superiori a una fissata soglia che, per i nostri esperimenti, dipende dalla risoluzione del video in esame nel seguente modo:
+			\begin{equation}
+			 Thresh = \frac{MN}{Ps^2}
+			\end{equation}
+			dove $M$ e $N$ sono le dimensioni dei frames e $Ps$ indica il size di una patch. Questo evita che falsi positivi siano presi in considerazione.\newline
+			La figura 4 mostra l'output dei diversi stage per un frame tratto da "birdfall2", SegTrack dataset. Il frame originale viene mostrato in (a) con la segmentazione del ground truth in rosso e la nostra segmentazione in verde. La figura 3(b) mostra la SM del frame. Pixel più chiari indicano maggiore salienza. la fig. 3(c) e (d) mostrano rispettivamente  la spatial coeherency map e la temporal coeherncy map. Le figure da (e) a (h) mostrano le 4 mappe ricavate dal magnitudo $M$ e dalla direzione $\theta$.
+			\pagebreak
+			\begin{figure*}[ht]
+			\caption{Differenti stage per un frame tratto da Birdfall2,SegTrack
+			(a) frame originale,(b) mappa di coerenza spazio-temporale, (c) mappa di coerenza spaziale ottenuta con w=1, (d) mappa di coerenza temporale ottenuta con w=0, da (f) a (h) rispettivamente: Motion entropy map, Direction entropy map, Motion Center Surround map, Direction Center Surround map}
+			\begin{center}
+				\subfloat[]{\includegraphics[width=2.7cm]{img/1}}
+				\hspace*{.2cm}
+				\subfloat[]{\includegraphics[width=2.7cm]{img/2}}
+				\hspace*{.2cm}
+				\subfloat[]{\includegraphics[width=2.7cm]{img/7}}
+				\hspace*{.2cm}
+				\subfloat[]{\includegraphics[width=2.7cm]{img/8}}	
+			\end{center}
+			\begin{center}
+				\subfloat{\includegraphics[width=2.7cm]{img/3}}
+				\hspace*{.2cm}
+				\subfloat[]{\includegraphics[width=2.7cm]{img/4}}
+				\hspace*{.2cm}
+				\subfloat[]{\includegraphics[width=2.7cm]{img/5}}
+				\hspace*{.2cm}
+				\subfloat[]{\includegraphics[width=2.7cm]{img/6}}		
+			\end{center}
+			\end{figure*}
+	\section{RISULTATI E CONFRONTI}
+		Il metodo è stato valutato usando 2 dataset che hanno risoluzioni differenti. le dimensioni dei frame vengono ridotte eliminando alcune righe e/o alcune colonne per far sì che diventino multipli di 8 (che è la dimensione di una patch). Tutte le immagini vengono trasformate in scala di grigi a 8 bit per l'elaborazione.
+		\subsection{Risultati Visivi Della Segmentazione}
+			La figura 5 mostra i risultati per i due dataset $birdfall$ e $parachute$. Ciascuna colonna rappresenta diversi frames del dataset. La segmentazione in rosso è quella ottenuta dal ground-truth mentre quella in verde è quella del metodo proposto.
+		\subsection{Risultati Quantitativi}
+			Sono stati utilizzati quattro indici per indicare l'efficacia del metodo proposto in confronto alla segmentazione ottimale (ground-truth) sul dataset $birdfall$. I quattro indici sono Precisione, Recupero, Dice Metric e Jaccard Index, definiti come segue:
+			\begin{equation}
+			\begin{aligned}
+				Recall = \frac{|G \cap A|}{|G|} \\
+				Precision = \frac{|G \cap A|}{|A|} \\
+				DM = \frac{2|G \cap A|}{|G + A|} \\
+				JI = \frac{|G \cap A|}{|G \cup A|}
+			\end{aligned}
+			\end{equation}
+			in cui $G$ è l'insieme dei pixel del ground-truth e $A$ è l'insieme dei pixel della segmentazione. $Recall$ indica la frazione di pixel rilevanti che sono recuperati. $Precision$ indica il numero di pixel recuperati che sono rilevanti. $DM$ indica il degrado dell'overlap tra due segmentazioni. $JI$ è usato invece per confrontare le similarità tra due campioni. \newline
+			L'intersezione $G \cap A$ è ottenuta binarizzando le segmentazioni e utilizzando un operatore bitwise AND tra la segmentazione ottenuta e quella del ground-truth. L'unione $G \cup A$ è invece ottenuta con un operatore bitwise OR tra la segmentazione ottenuta e quella ground-truth.\newline
+			Tutti gli indici sono definiti nel range [0,1] e valori più alti indicano performance migliori. Segmentazioni ottimali (ground-truth) sono testate solo sul dataset $birdfall$ di SegTrack.\newline
+			L'algoritmo implementato da Mahaptra, Gilani e Saini viene anche confrontato con altri metodi quali Optical Flow e PQFT (Phase spectrum of Quaternion Fourier Transform) ed è stato notato che solo l'algoritmo di Optical Flow è migliore del metodo proposto, sebbene sia più lento. \newline
+			Gli indici di efficacia sono calcolati anche per valori di $w=0$ e $w=1$ che indicano rispettivamente una mappa ottenuta unicamente dalla Spatial Coherency map o dalla Temporal Coherency map. Notiamo che soprattutto usando solo la mappa di coerenza spaziale il risultato è inutile.\newline
+			
 \end{document}
